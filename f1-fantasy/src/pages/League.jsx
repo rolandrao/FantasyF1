@@ -10,7 +10,6 @@ const League = () => {
   }, [])
 
   const fetchStandings = async () => {
-    // Fetch from our new "Virtual Table" View
     const { data, error } = await supabase
       .from('team_standings')
       .select('*')
@@ -23,7 +22,7 @@ const League = () => {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white pb-20 md:pb-0">
+    <div className="min-h-screen bg-neutral-900 text-white pb-24 md:pb-10">
       
       {/* HEADER */}
       <div className="bg-neutral-800 border-b border-neutral-700 p-8 text-center">
@@ -56,23 +55,29 @@ const League = () => {
                         `}
                     >
                         {/* LEFT: Rank & Name */}
-                        <div className="flex items-center gap-4 md:gap-6">
-                            <div className={`text-3xl md:text-4xl font-black italic w-12 text-center ${rankColor}`}>
+                        <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
+                            <div className={`text-3xl md:text-4xl font-black italic w-8 md:w-12 text-center shrink-0 ${rankColor}`}>
                                 {index + 1}
                             </div>
-                            <div>
-                                <h3 className="text-lg md:text-2xl font-bold leading-tight">{team.team_name}</h3>
-                                <p className="text-xs md:text-sm text-gray-400 uppercase tracking-widest">{team.owner_name}</p>
+                            <div className="min-w-0"> {/* min-w-0 forces truncation if needed */}
+                                <h3 className="text-lg md:text-2xl font-bold leading-tight truncate">{team.team_name}</h3>
+                                <p className="text-xs md:text-sm text-gray-400 uppercase tracking-widest truncate">{team.owner_name}</p>
                             </div>
                         </div>
 
-                        {/* RIGHT: Score Breakdown */}
-                        <div className="text-right">
-                            <div className="text-3xl md:text-5xl font-black text-white">
-                                {team.total_score} <span className="text-sm font-normal text-gray-500">pts</span>
+                        {/* RIGHT: Score Breakdown (Stacked Layout) */}
+                        <div className="text-right shrink-0 ml-2">
+                            {/* Total Score */}
+                            <div className="text-3xl md:text-5xl font-black text-white leading-none">
+                                {team.total_score} <span className="text-xs md:text-sm font-normal text-gray-500">pts</span>
                             </div>
                             
-                            {/* Breakdown (Desktop Only) */}
+                            {/* Mobile Breakdown (Now stacked nicely below score) */}
+                            <div className="md:hidden text-[10px] text-gray-400 mt-1 font-mono">
+                                D:<span className="text-white">{team.driver_score}</span> • C:<span className="text-white">{team.constructor_score}</span>
+                            </div>
+
+                            {/* Desktop Breakdown (Detailed) */}
                             <div className="hidden md:flex gap-3 justify-end mt-1 text-xs text-gray-500">
                                 <span>Drivers: <b className="text-white">{team.driver_score}</b></span>
                                 <span>•</span>
@@ -80,10 +85,6 @@ const League = () => {
                             </div>
                         </div>
 
-                        {/* Mobile Breakdown Badge */}
-                        <div className="md:hidden absolute top-2 right-2 text-[10px] text-gray-500 bg-neutral-900 px-2 py-1 rounded">
-                           D: {team.driver_score} | C: {team.constructor_score}
-                        </div>
                     </div>
                 )
             })}

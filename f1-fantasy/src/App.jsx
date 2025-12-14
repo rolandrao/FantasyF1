@@ -10,6 +10,7 @@ import F1Hub from './pages/F1Hub'
 import DraftRoom from './pages/DraftRoom'
 import Login from './pages/Login'
 import Navbar from './components/Navbar'
+import GlassNav from './components/GlassNav'
 
 // Environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -61,7 +62,7 @@ function App() {
   return (
     <Router>
       <div className="app-container" style={{ fontFamily: 'Arial, sans-serif' }}>
-        {shouldShowNavbar && <Navbar session={session} />}
+        {shouldShowNavbar && <GlassNav session={session} />}
         
         
         <div style={{ padding: '20px' }}>

@@ -78,7 +78,7 @@ const F1Hub = () => {
         <div className="bg-neutral-800 rounded-xl border border-neutral-700 shadow-2xl overflow-hidden">
           <div className="p-4 border-b border-neutral-700 flex justify-between items-center bg-neutral-850">
             <h2 className="font-bold text-lg md:text-xl">Latest Race Results</h2>
-            <span className="bg-neutral-900 text-xs font-mono px-2 py-1 rounded text-gray-400">Bahrain GP</span>
+            <span className="bg-neutral-900 text-xs font-mono px-2 py-1 rounded text-gray-400"></span>
           </div>
 
           {loading ? (
