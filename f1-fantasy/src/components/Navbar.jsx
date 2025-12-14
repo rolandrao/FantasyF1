@@ -74,9 +74,9 @@ const Navbar = () => {
           <span className={`font-bold uppercase scale-75 ${isActive('/')}`}>Home</span>
         </Link>
 
-        <Link to="/f1" className="flex flex-col items-center gap-1 w-1/5">
-          <span className={`text-2xl ${isActive('/f1')}`}>🏁</span>
-          <span className={`font-bold uppercase scale-75 ${isActive('/f1')}`}>F1</span>
+        <Link to="/f1hub" className="flex flex-col items-center gap-1 w-1/5">
+          <span className={`text-2xl ${isActive('/f1hub')}`}>🏁</span>
+          <span className={`font-bold uppercase scale-75 ${isActive('/f1hub')}`}>F1</span>
         </Link>
 
         <Link to="/league" className="flex flex-col items-center gap-1 w-1/5">
