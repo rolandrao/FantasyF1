@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import Dashboard from './pages/Dashboard'
 import MyTeam from './pages/MyTeam'
 import League from './pages/League'
-import F1Stats from './pages/F1Stats'
+import F1Hub from './pages/F1Hub'
 import DraftRoom from './pages/DraftRoom'
 import Login from './pages/Login'
 import Navbar from './components/Navbar'
@@ -19,6 +19,10 @@ export const supabase = createClient(supabaseUrl, supabaseKey)
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true) // <--- NEW: Loading state
+
+  const hideNavbarRoutes = ['/login']
+
+  const shouldShowNavbar = !hideNavbarRoutes.includes(location.pathname)
 
   useEffect(() => {
     // 1. Check active session on startup
@@ -57,7 +61,8 @@ function App() {
   return (
     <Router>
       <div className="app-container" style={{ fontFamily: 'Arial, sans-serif' }}>
-        <Navbar session={session} />
+        {shouldShowNavbar && <Navbar session={session} />}
+        
         
         <div style={{ padding: '20px' }}>
           <Routes>
@@ -67,7 +72,7 @@ function App() {
             <Route path="/" element={session ? <Dashboard /> : <Navigate to="/login" />} />
             <Route path="/team" element={session ? <MyTeam /> : <Navigate to="/login" />} />
             <Route path="/league" element={session ? <League /> : <Navigate to="/login" />} />
-            <Route path="/f1-stats" element={session ? <F1Stats /> : <Navigate to="/login" />} />
+            <Route path="/f1hub" element={session ? <F1Hub /> : <Navigate to="/login" />} />
             <Route path="/draft" element={session ? <DraftRoom /> : <Navigate to="/login" />} />
           </Routes>
         </div>
