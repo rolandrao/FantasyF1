@@ -1,86 +1,70 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
-
-// Import Pages
-import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
+import Home from './pages/Home'
+import DraftRoom from './pages/DraftRoom'
 import MyTeam from './pages/MyTeam'
 import League from './pages/League'
 import F1Hub from './pages/F1Hub'
-import DraftRoom from './pages/DraftRoom'
-import Login from './pages/Login'
+import GlassNav from './components/GlassNav' 
 import Navbar from './components/Navbar'
-import GlassNav from './components/GlassNav'
 
-// Environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-export const supabase = createClient(supabaseUrl, supabaseKey)
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 function App() {
   const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true) // <--- NEW: Loading state
-
-  const hideNavbarRoutes = ['/login']
-
-  const shouldShowNavbar = !hideNavbarRoutes.includes(location.pathname)
 
   useEffect(() => {
-    // 1. Check active session on startup
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      setLoading(false) // Stop loading once we know the result
     })
 
-    // 2. Listen for changes (this catches the Magic Link redirect!)
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      setLoading(false) // Stop loading if auth state changes
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  // 3. SHOW LOADING SCREEN instead of redirecting immediately
-  if (loading) {
-    return (
-      <div style={{ 
-        height: '100vh', 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        backgroundColor: '#1e1e1e', 
-        color: 'white' 
-      }}>
-        Loading F1 Fantasy...
-      </div>
-    )
-  }
-
   return (
-    <Router>
-      <div className="app-container" style={{ fontFamily: 'Arial, sans-serif' }}>
-        {shouldShowNavbar && <GlassNav session={session} />}
-        
-        
-        <div style={{ padding: '20px' }}>
-          <Routes>
-            <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
-            
-            {/* Protected Routes */}
-            <Route path="/" element={session ? <Dashboard /> : <Navigate to="/login" />} />
-            <Route path="/team" element={session ? <MyTeam /> : <Navigate to="/login" />} />
-            <Route path="/league" element={session ? <League /> : <Navigate to="/login" />} />
-            <Route path="/f1hub" element={session ? <F1Hub /> : <Navigate to="/login" />} />
-            <Route path="/draft" element={session ? <DraftRoom /> : <Navigate to="/login" />} />
-          </Routes>
-        </div>
+    // CHANGE 1: Removed 'md:flex-row'. We want a vertical stack (Nav on top, Content below).
+    <div className="min-h-screen bg-neutral-900 text-white font-sans antialiased selection:bg-f1-red selection:text-white flex flex-col">
+      
+      {/* =====================================================
+          DESKTOP NAVIGATION (Horizontal Top Bar)
+          - Removed 'h-screen' (which forced it to be a tall sidebar)
+          - Added 'w-full' to ensure it stretches across the top
+         ===================================================== */}
+      <div className="hidden md:block sticky top-0 z-50 w-full">
+        <Navbar session={session} />
       </div>
-    </Router>
+
+      {/* =====================================================
+          MAIN CONTENT AREA
+         ===================================================== */}
+      <main className="flex-1 relative w-full overflow-x-hidden pb-24 md:pb-10">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/draft" element={<DraftRoom />} />
+          <Route path="/team" element={<MyTeam />} />
+          <Route path="/league" element={<League />} />
+          <Route path="/f1hub" element={<F1Hub />} />
+        </Routes>
+      </main>
+
+      {/* =====================================================
+          MOBILE NAVIGATION (Bottom Glass)
+         ===================================================== */}
+      <div className="md:hidden">
+        <GlassNav />
+      </div>
+
+    </div>
   )
 }
 
 export default App
-

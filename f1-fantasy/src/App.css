@@ -1,42 +1,109 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+:root {
+  /* The Magic Gradient: Change this to update cards AND modal at once */
+  --team-gradient: linear-gradient(135deg, #FF0000 0%, #990000 100%);
+  --card-radius: 12px;
+  --text-white: #ffffff;
+}
+
+.my-team-container {
+  padding: 20px;
+  font-family: sans-serif;
+}
+
+/* --- Loading State --- */
+.loading-message {
+  color: white;
   text-align: center;
+  margin-top: 50px;
+  font-size: 1.2rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* --- Card Styles --- */
+.cards-wrapper {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.team-card {
+  background: var(--team-gradient);
+  border-radius: var(--card-radius);
+  color: var(--text-white);
+  width: 300px;
+  padding: 20px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.team-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.3);
 }
 
-.card {
-  padding: 2em;
+.card-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  opacity: 0.8;
+  letter-spacing: 1px;
 }
 
-.read-the-docs {
-  color: #888;
+.card-name {
+  margin: 10px 0 5px 0;
+  font-size: 1.8rem;
+  font-weight: bold;
+}
+
+/* --- Modal Styles --- */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: white;
+  width: 90%;
+  max-width: 500px;
+  border-radius: var(--card-radius);
+  overflow: hidden; /* Important: keeps the header corners rounded */
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: modalPop 0.3s ease-out;
+}
+
+/* The Modal Header inherits the same gradient variable */
+.modal-header {
+  background: var(--team-gradient);
+  padding: 20px;
+  color: var(--text-white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-btn {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.modal-body {
+  padding: 25px;
+  color: #1f2937; /* Dark grey for readability */
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
