@@ -146,7 +146,7 @@ const Home = () => {
       {nextRace && (
         <div className="bg-neutral-800 border-b border-neutral-700 p-8 md:p-12 mb-8 relative overflow-hidden group">
             <div 
-                className="absolute inset-0 opacity-10 group-hover:opacity-20 transition duration-500"
+                className="absolute inset-0 opacity-60 group-hover:opacity-70 transition duration-500"
                 style={{ background: getGradient(getRaceColors(nextRace.name)) }}
             ></div>
 
