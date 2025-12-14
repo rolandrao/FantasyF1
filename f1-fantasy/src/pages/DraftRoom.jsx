@@ -175,89 +175,90 @@ const DraftRoom = () => {
   const isBotTurn = currentPick && currentPick.teams.is_bot
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white p-6 relative">
+    <div className="min-h-screen bg-neutral-900 text-white p-4 md:p-6 relative">
       
       {/* TOAST NOTIFICATION */}
       {toast.show && (
-        <div className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-2xl z-[100] font-bold text-white animate-bounce ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
+        <div className={`fixed top-4 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 px-4 py-3 rounded-lg shadow-2xl z-[100] font-bold text-white text-center animate-bounce ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
           {toast.type === 'error' ? '⚠️' : '✅'} {toast.message}
         </div>
       )}
 
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* --- LEFT SIDEBAR (Sticky) --- */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="sticky top-6 space-y-6"> {/* Makes the sidebar stick while scrolling right side */}
+        {/* --- LEFT SIDEBAR (Sticky on Desktop) --- */}
+        <div className="lg:col-span-1 space-y-4 md:space-y-6">
+          <div className="lg:sticky lg:top-24 space-y-4 md:space-y-6"> 
               
               {/* 1. ON THE CLOCK */}
-              <div className={`p-6 rounded-xl border-4 ${isMyTurn ? 'border-green-500 bg-green-900/20' : 'border-neutral-700 bg-neutral-800'}`}>
-                <h2 className="text-sm uppercase text-gray-400 font-bold mb-2">On The Clock</h2>
-                {currentPick ? (
-                  <div>
-                    <div className="text-4xl font-bold mb-1">#{currentPick.pick_number}</div>
-                    <div className="text-xl text-f1-red font-bold truncate">{currentPick.teams.team_name}</div>
-                    <div className="text-sm text-gray-400">{currentPick.teams.owner_name}</div>
+              <div className={`p-4 md:p-6 rounded-xl border-2 md:border-4 ${isMyTurn ? 'border-green-500 bg-green-900/20' : 'border-neutral-700 bg-neutral-800'}`}>
+                <div className="flex justify-between items-center lg:block">
+                    <div>
+                        <h2 className="text-xs md:text-sm uppercase text-gray-400 font-bold mb-1 md:mb-2">On The Clock</h2>
+                        {currentPick ? (
+                          <div>
+                            <div className="text-2xl md:text-4xl font-bold md:mb-1">#{currentPick.pick_number}</div>
+                            <div className="text-lg md:text-xl text-f1-red font-bold truncate max-w-[150px] md:max-w-none">{currentPick.teams.team_name}</div>
+                            <div className="text-xs md:text-sm text-gray-400">{currentPick.teams.owner_name}</div>
+                          </div>
+                        ) : <div className="text-xl font-bold text-green-500">COMPLETE</div>}
+                    </div>
                     
-                    {isMyTurn && <div className="mt-2 bg-green-600 text-center py-2 rounded font-bold animate-pulse">YOUR TURN</div>}
-                    
-                    {isBotTurn && (
-                        <button onClick={simulateBotPick} disabled={loading} className="mt-4 w-full bg-blue-600 hover:bg-blue-500 py-2 rounded font-bold transition shadow-lg text-white">
-                            {loading ? "Thinking..." : "🤖 Force Bot Pick"}
-                        </button>
-                    )}
-                  </div>
-                ) : <div className="text-xl font-bold text-green-500">DRAFT COMPLETE</div>}
+                    {/* Action Button */}
+                    <div>
+                        {isMyTurn && <div className="bg-green-600 px-4 py-2 rounded font-bold animate-pulse text-sm">YOUR TURN</div>}
+                        {isBotTurn && (
+                            <button onClick={simulateBotPick} disabled={loading} className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded font-bold text-xs md:text-sm shadow-lg text-white">
+                                {loading ? "..." : "Force Bot"}
+                            </button>
+                        )}
+                    </div>
+                </div>
               </div>
 
               {/* 2. MY ROSTER */}
-              <div className="bg-neutral-800 p-4 rounded-xl border border-neutral-700">
-                <h3 className="text-gray-400 font-bold text-sm mb-2 border-b border-neutral-700 pb-2">My Roster</h3>
-                <div className="flex justify-between text-sm mb-1">
-                    <span>Drivers:</span>
-                    <span className={myPicks.filter(p => p.driver_id).length === 3 ? 'text-green-500 font-bold' : 'text-white'}>
-                        {myPicks.filter(p => p.driver_id).length} / 3
-                    </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                    <span>Constructor:</span>
-                    <span className={myPicks.filter(p => p.constructor_id).length === 1 ? 'text-green-500 font-bold' : 'text-white'}>
-                        {myPicks.filter(p => p.constructor_id).length} / 1
-                    </span>
+              <div className="bg-neutral-800 p-3 md:p-4 rounded-xl border border-neutral-700">
+                <h3 className="text-gray-400 font-bold text-xs md:text-sm mb-2 border-b border-neutral-700 pb-2">My Roster</h3>
+                <div className="flex gap-4">
+                    <div className="flex-1 text-center bg-neutral-900 rounded p-1">
+                        <span className="block text-xs text-gray-500">Drivers</span>
+                        <span className={`font-mono font-bold ${myPicks.filter(p => p.driver_id).length === 3 ? 'text-green-500' : 'text-white'}`}>
+                            {myPicks.filter(p => p.driver_id).length}/3
+                        </span>
+                    </div>
+                    <div className="flex-1 text-center bg-neutral-900 rounded p-1">
+                         <span className="block text-xs text-gray-500">Const.</span>
+                        <span className={`font-mono font-bold ${myPicks.filter(p => p.constructor_id).length === 1 ? 'text-green-500' : 'text-white'}`}>
+                            {myPicks.filter(p => p.constructor_id).length}/1
+                        </span>
+                    </div>
                 </div>
               </div>
 
               {/* 3. RECENT PICKS */}
-              <div className="bg-neutral-800 p-4 rounded-xl border border-neutral-700 shadow-inner">
+              <div className="bg-neutral-800 p-3 md:p-4 rounded-xl border border-neutral-700 shadow-inner hidden md:block">
                 <h3 className="text-sm font-bold text-gray-400 mb-3 border-b border-neutral-700 pb-2">Recent Picks</h3>
                 <div className="space-y-3">
-                  {recentPicks.length === 0 && <p className="text-xs text-gray-500">Draft hasn't started.</p>}
-                  
                   {recentPicks.map((p) => {
                     const pickedName = p.drivers ? p.drivers.name : p.constructors ? p.constructors.name : 'Unknown'
                     return (
-                        <div key={p.pick_number} className="text-sm bg-neutral-900/50 p-2 rounded border-l-2 border-neutral-600">
-                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                <span>Pick #{p.pick_number}</span>
-                                <span>{p.teams.owner_name}</span>
-                            </div>
-                            <div className="font-bold text-white flex items-center gap-2">
-                                <span className="text-f1-red">➜</span> {pickedName}
-                            </div>
+                        <div key={p.pick_number} className="text-xs md:text-sm bg-neutral-900/50 p-2 rounded border-l-2 border-neutral-600">
+                            <span className="text-gray-500 mr-2">#{p.pick_number} {p.teams.owner_name}:</span>
+                            <span className="text-white font-bold">{pickedName}</span>
                         </div>
                     )
                   })}
                 </div>
               </div>
 
-              {/* 4. COMING UP */}
-              <div className="bg-neutral-800 p-4 rounded-xl border border-neutral-700">
+              {/* 4. UPCOMING PICKS (RESTORED) */}
+              <div className="bg-neutral-800 p-3 md:p-4 rounded-xl border border-neutral-700">
                 <h3 className="text-sm font-bold text-gray-400 mb-3 border-b border-neutral-700 pb-2">Coming Up</h3>
                 <div className="space-y-2 max-h-[250px] overflow-y-auto">
                   {upcomingPicks.length === 0 && <p className="text-xs text-gray-500">No picks left.</p>}
                   
                   {upcomingPicks.map((p) => (
-                    <div key={p.pick_number} className={`flex justify-between text-sm p-2 rounded ${p.pick_number === currentPick?.pick_number ? 'bg-neutral-700 font-bold text-white' : 'text-gray-400'}`}>
+                    <div key={p.pick_number} className={`flex justify-between text-xs md:text-sm p-2 rounded ${p.pick_number === currentPick?.pick_number ? 'bg-neutral-700 font-bold text-white' : 'text-gray-400'}`}>
                       <span>#{p.pick_number}</span>
                       <span className="truncate w-32 text-right">{p.teams.owner_name}</span>
                     </div>
@@ -269,36 +270,37 @@ const DraftRoom = () => {
         </div>
 
         {/* --- RIGHT CONTENT: MARKET (Split View) --- */}
-        <div className="lg:col-span-3 space-y-10">
+        <div className="lg:col-span-3 space-y-8 pb-20 md:pb-0">
             
             {/* SECTION 1: DRIVERS */}
             <div>
-                <div className="flex items-center gap-2 mb-4">
-                    <span className="text-2xl">🏎️</span>
-                    <h2 className="text-2xl font-bold">Available Drivers</h2>
-                    <span className="bg-neutral-800 text-gray-400 text-sm px-2 py-1 rounded-full">{availableDrivers.length} left</span>
+                <div className="flex items-center gap-2 mb-4 sticky top-0 bg-neutral-900 py-2 z-10 border-b border-neutral-800">
+                    <span className="text-xl">🏎️</span>
+                    <h2 className="text-xl md:text-2xl font-bold">Drivers</h2>
+                    <span className="bg-neutral-800 text-gray-400 text-xs px-2 py-1 rounded-full">{availableDrivers.length}</span>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {availableDrivers.map((item) => (
                         <button
                             key={item.id}
                             disabled={!isMyTurn || loading}
                             onClick={() => handleDraft(item, 'driver')}
                             className={`
-                                group relative flex flex-col items-start p-4 rounded-xl border transition-all text-left
+                                group relative flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all text-left
                                 ${!isMyTurn 
-                                    ? 'bg-neutral-800 border-neutral-700 opacity-60 cursor-not-allowed' 
-                                    : 'bg-neutral-800 border-neutral-600 hover:border-red-600 hover:bg-neutral-750 hover:scale-[1.02] cursor-pointer shadow-lg'
+                                    ? 'bg-neutral-800 border-neutral-700 opacity-60' 
+                                    : 'bg-neutral-800 border-neutral-600 hover:border-red-600 hover:bg-neutral-750 active:scale-95 shadow-lg'
                                 }
                             `}
                         >
-                            <span className="font-bold text-lg text-white group-hover:text-red-400 transition">{item.name}</span>
-                            <span className="text-sm text-gray-400">{item.team}</span>
-                            {isMyTurn && <div className="absolute top-4 right-4 text-xs bg-red-600 text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">DRAFT</div>}
+                            <div>
+                                <div className="font-bold text-base md:text-lg text-white">{item.name}</div>
+                                <div className="text-xs md:text-sm text-gray-400">{item.team}</div>
+                            </div>
+                            {isMyTurn && <div className="text-f1-red font-bold text-xl">➜</div>}
                         </button>
                     ))}
-                    {availableDrivers.length === 0 && <p className="text-gray-500 italic">No drivers remaining.</p>}
                 </div>
             </div>
 
@@ -307,32 +309,32 @@ const DraftRoom = () => {
 
             {/* SECTION 2: CONSTRUCTORS */}
             <div>
-                <div className="flex items-center gap-2 mb-4">
-                    <span className="text-2xl">🔧</span>
-                    <h2 className="text-2xl font-bold">Available Constructors</h2>
-                    <span className="bg-neutral-800 text-gray-400 text-sm px-2 py-1 rounded-full">{availableConstructors.length} left</span>
+                <div className="flex items-center gap-2 mb-4 sticky top-0 bg-neutral-900 py-2 z-10 border-b border-neutral-800">
+                    <span className="text-xl">🔧</span>
+                    <h2 className="text-xl md:text-2xl font-bold">Constructors</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {availableConstructors.map((item) => (
                         <button
                             key={item.id}
                             disabled={!isMyTurn || loading}
                             onClick={() => handleDraft(item, 'constructor')}
                             className={`
-                                group relative flex flex-col items-start p-4 rounded-xl border transition-all text-left
+                                group relative flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all text-left
                                 ${!isMyTurn 
-                                    ? 'bg-neutral-800 border-neutral-700 opacity-60 cursor-not-allowed' 
-                                    : 'bg-neutral-800 border-neutral-600 hover:border-blue-500 hover:bg-neutral-750 hover:scale-[1.02] cursor-pointer shadow-lg'
+                                    ? 'bg-neutral-800 border-neutral-700 opacity-60' 
+                                    : 'bg-neutral-800 border-neutral-600 hover:border-blue-500 hover:bg-neutral-750 active:scale-95 shadow-lg'
                                 }
                             `}
                         >
-                            <span className="font-bold text-lg text-white group-hover:text-blue-400 transition">{item.name}</span>
-                            <span className="text-sm text-gray-400">Constructor Team</span>
-                            {isMyTurn && <div className="absolute top-4 right-4 text-xs bg-blue-600 text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">DRAFT</div>}
+                            <div>
+                                <div className="font-bold text-base md:text-lg text-white">{item.name}</div>
+                                <div className="text-xs md:text-sm text-gray-400">Constructor</div>
+                            </div>
+                            {isMyTurn && <div className="text-blue-500 font-bold text-xl">➜</div>}
                         </button>
                     ))}
-                    {availableConstructors.length === 0 && <p className="text-gray-500 italic">No constructors remaining.</p>}
                 </div>
             </div>
             
