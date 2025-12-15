@@ -10,7 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.87.1",
+    "@netlify/functions": "^5.1.1",
+    "@supabase/supabase-js": "^2.87.3",
     "framer-motion": "^12.23.26",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
