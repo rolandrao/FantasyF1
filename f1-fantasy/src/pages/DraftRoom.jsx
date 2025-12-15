@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../App'
 import DraftConfirmationModal from '../components/DraftConfirmationModal'
+import LiquidTabs from '../components/LiquidTabs' 
 
 const DraftRoom = () => {
   // --- STATE ---
@@ -199,7 +200,7 @@ const DraftRoom = () => {
                         {currentPick && <div className="font-bold text-lg">{currentPick.teams.owner_name}</div>}
                     </div>
                 </div>
-                {isBotTurn && <button onClick={simulateBotPick} disabled={loading} className="bg-blue-600 text-xs px-2 py-1 rounded">Skip</button>}
+                {<button onClick={simulateBotPick} disabled={loading} className="bg-blue-600 text-xs px-2 py-1 rounded">Skip</button>}
             </div>
         </div>
 
@@ -207,10 +208,17 @@ const DraftRoom = () => {
         <div className="flex-1 overflow-y-auto bg-neutral-900 p-4 pb-48">
             {activeTab === 'market' && (
                 <>
-                <div className="flex bg-neutral-800 p-1 rounded-lg mb-4">
-                    <button onClick={() => setMarketFilter('drivers')} className={`flex-1 py-1.5 rounded-md text-xs font-bold ${marketFilter === 'drivers' ? 'bg-f1-red' : 'text-gray-400'}`}>Drivers</button>
-                    <button onClick={() => setMarketFilter('constructors')} className={`flex-1 py-1.5 rounded-md text-xs font-bold ${marketFilter === 'constructors' ? 'bg-blue-600' : 'text-gray-400'}`}>Teams</button>
+                {/* --- UPDATE 1: ADD UNIQUE LAYOUT-ID --- */}
+                <div className="mb-4">
+                     <LiquidTabs 
+                         layoutId="market-filter-tabs" // UNIQUE ID
+                         options={[{id: 'drivers', label: 'Drivers'}, {id: 'constructors', label: 'Teams'}]}
+                         activeId={marketFilter}
+                         onChange={setMarketFilter}
+                         className="w-full justify-between bg-neutral-800 border-none"
+                     />
                 </div>
+
                 <div className="grid grid-cols-1 gap-3">
                     {marketFilter === 'drivers' ? availableDrivers.map(d => (
                          <button key={d.id} disabled={!isMyTurn} onClick={() => triggerDraftModal(d, 'driver')} className={`flex items-center gap-3 p-3 rounded-xl border text-left relative overflow-hidden ${!isMyTurn ? 'opacity-60 border-neutral-800' : 'border-neutral-700/50'}`} style={{ background: getTeamGradient(d.constructors?.name) }}>
@@ -250,12 +258,14 @@ const DraftRoom = () => {
             )}
         </div>
 
-        {/* Mobile Toggle */}
-        <div className="flex-none fixed bottom-24 left-6 right-6 z-40">
-            <div className="flex p-1 rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl backdrop-saturate-150 bg-black/40">
-                <button onClick={() => setActiveTab('market')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-xl ${activeTab === 'market' ? 'bg-white/20 text-white shadow-inner' : 'text-white/40'}`}>Market</button>
-                <button onClick={() => setActiveTab('board')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-xl ${activeTab === 'board' ? 'bg-white/20 text-white shadow-inner' : 'text-white/40'}`}>Board</button>
-            </div>
+        {/* --- UPDATE 2: MOVED UP (bottom-32) & UNIQUE LAYOUT-ID --- */}
+        <div className="flex-none fixed bottom-28 left-6 right-6 z-40">
+             <LiquidTabs 
+                 layoutId="mobile-view-tabs" // UNIQUE ID
+                 options={[{ id: 'market', label: 'MARKET' }, { id: 'board', label: 'BOARD' }]}
+                 activeId={activeTab}
+                 onChange={setActiveTab}
+             />
         </div>
       </div>
 
@@ -276,12 +286,11 @@ const DraftRoom = () => {
                 </div>
                 <div className="text-3xl font-black italic truncate mb-2">{currentPick ? currentPick.teams.owner_name : 'Draft Complete'}</div>
                 {isMyTurn && <div className="text-green-400 font-bold animate-pulse">It's your turn! Make a selection.</div>}
+
+                <button onClick={simulateBotPick} className="mt-4 w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold text-sm transition">
+                    {loading ? 'Simulating Bot...' : 'Force Bot Pick 🤖'}
+                </button>
                 
-                {isBotTurn && (
-                    <button onClick={simulateBotPick} disabled={loading} className="mt-4 w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold text-sm transition">
-                        {loading ? 'Simulating Bot...' : 'Force Bot Pick 🤖'}
-                    </button>
-                )}
             </div>
 
             {/* 2. NEXT 6 PICKS */}
