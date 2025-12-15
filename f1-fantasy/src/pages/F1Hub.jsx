@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../App'
 import { getRaceColors, getTeamColors } from '../utils/colors'
+import { formatToNYTime } from '../utils/date' // <--- IMPORT THIS
 import { motion, AnimatePresence } from 'framer-motion'
 
 const F1Hub = () => {
-  const [selectedSeason, setSelectedSeason] = useState(2026) // Default to 2026
+  const [selectedSeason, setSelectedSeason] = useState(2026)
   
   const [races, setRaces] = useState([])
   const [driversStandings, setDriversStandings] = useState([])
@@ -14,17 +15,17 @@ const F1Hub = () => {
 
   useEffect(() => {
     fetchSeasonData()
-  }, [selectedSeason]) // Re-run when dropdown changes
+  }, [selectedSeason])
 
   const fetchSeasonData = async () => {
     setLoading(true)
-    setExpandedRaceId(null) // Close any open tabs when switching years
+    setExpandedRaceId(null)
 
-    // 1. Fetch Schedule for Selected Year
+    // 1. Fetch Schedule
     const { data: raceData } = await supabase
       .from('races')
       .select('*')
-      .eq('year', selectedSeason) // <--- FILTER BY YEAR
+      .eq('year', selectedSeason)
       .order('date', { ascending: true })
     
     if (!raceData || raceData.length === 0) {
@@ -37,10 +38,8 @@ const F1Hub = () => {
 
     setRaces(raceData)
 
-    // 2. Fetch Results to calculate Standings dynamically
-    // We fetch ALL results for this season's races to ensure accurate points
+    // 2. Fetch Results
     const raceIds = raceData.map(r => r.id)
-    
     const { data: results } = await supabase
         .from('race_results')
         .select(`
@@ -52,13 +51,11 @@ const F1Hub = () => {
         `)
         .in('race_id', raceIds)
 
-    // 3. Calculate Standings in JS (Client-side)
-    // This avoids needing complex SQL views for every specific year
+    // 3. Calculate Standings
     const dMap = {}
     const cMap = {}
 
     results.forEach(r => {
-        // Driver Totals
         const dId = r.driver_id
         if (!dMap[dId]) {
             dMap[dId] = { 
@@ -71,7 +68,6 @@ const F1Hub = () => {
         }
         dMap[dId].points += (r.points || 0)
 
-        // Constructor Totals
         const cId = r.constructor_id
         if (!cMap[cId]) {
             cMap[cId] = { 
@@ -83,7 +79,6 @@ const F1Hub = () => {
         cMap[cId].points += (r.points || 0)
     })
 
-    // Sort and Top 5
     const sortedDrivers = Object.values(dMap).sort((a,b) => b.points - a.points).slice(0, 5)
     const sortedConstructors = Object.values(cMap).sort((a,b) => b.points - a.points).slice(0, 5)
 
@@ -92,11 +87,14 @@ const F1Hub = () => {
     setLoading(false)
   }
 
-  // Auto-scroll to next/current race
+  // Auto-scroll
   useEffect(() => {
     if (!loading && races.length > 0) {
-      // Logic: Find first race in the future, OR the last race if all are past
-      const nextRace = races.find(r => new Date(r.date) > new Date())
+      // Logic: Find first race in the future
+      const nextRace = races.find(r => {
+          const { raw } = formatToNYTime(r.date, r.time)
+          return raw > new Date()
+      })
       const targetId = nextRace ? nextRace.id : races[races.length - 1].id
       
       const element = document.getElementById(`race-${targetId}`)
@@ -139,11 +137,15 @@ const F1Hub = () => {
              <div className="text-center py-20 text-gray-500">No data available for {selectedSeason} yet.</div> 
           ) : (
             races.map((race) => {
-               const isFuture = new Date(race.date) > new Date()
+               // 1. USE THE UTILITY TO GET NY TIME & CHECK FUTURE STATUS
+               const ny = formatToNYTime(race.date, race.time)
+               const isFuture = ny.raw > new Date()
+
                return (
                 <RaceCard 
                   key={race.id} 
                   race={race} 
+                  ny={ny} // Pass the NY object down
                   isFuture={isFuture}
                   isExpanded={expandedRaceId === race.id}
                   onToggle={() => setExpandedRaceId(expandedRaceId === race.id ? null : race.id)}
@@ -217,8 +219,8 @@ const F1Hub = () => {
   )
 }
 
-// --- SUB-COMPONENT: RACE CARD (Unchanged) ---
-const RaceCard = ({ race, isFuture, isExpanded, onToggle }) => {
+// --- SUB-COMPONENT: RACE CARD ---
+const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
   const raceColors = getRaceColors(race.name)
   const [activeSession, setActiveSession] = useState('race')
 
@@ -244,7 +246,8 @@ const RaceCard = ({ race, isFuture, isExpanded, onToggle }) => {
             </div>
             <h3 className="text-xl md:text-2xl font-black italic text-white/90">{race.name}</h3>
             <div className="flex items-center gap-2 text-sm text-gray-400 mt-1">
-                <span>{new Date(race.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                {/* 2. DISPLAY NY DATE */}
+                <span>{ny.date}</span>
                 <span>•</span>
                 <span>{race.circuit}</span>
             </div>
@@ -253,8 +256,9 @@ const RaceCard = ({ race, isFuture, isExpanded, onToggle }) => {
           <div className="flex items-center gap-4">
              {isFuture ? (
                  <div className="text-right bg-black/20 p-2 rounded-lg border border-white/5">
-                    <div className="text-[10px] uppercase text-gray-500 font-bold">Lights Out</div>
-                    <div className="font-mono font-bold text-lg">{race.time ? race.time.slice(0,5) : '--:--'}</div>
+                    <div className="text-[10px] uppercase text-gray-500 font-bold">Lights Out (ET)</div>
+                    {/* 3. DISPLAY NY TIME */}
+                    <div className="font-mono font-bold text-lg text-yellow-400">{ny.time}</div>
                  </div>
              ) : (
                  <div className={`w-8 h-8 rounded-full bg-white/5 flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-white/20' : ''}`}>
@@ -298,7 +302,7 @@ const RaceCard = ({ race, isFuture, isExpanded, onToggle }) => {
   )
 }
 
-// --- SUB-COMPONENT: SESSION TABLE (Unchanged) ---
+// --- SUB-COMPONENT: SESSION TABLE ---
 const SessionResultsTable = ({ raceId, sessionType }) => {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(true)
@@ -339,7 +343,9 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
             <th className="text-center py-2 px-2 w-10">Pos</th>
             <th className="text-left py-2 px-2">Driver</th>
             <th className="text-right py-2 px-2 hidden md:table-cell">Team</th>
-            <th className="text-right py-2 px-2">Pts</th>
+            <th className="text-right py-2 px-2">
+                {sessionType === 'qualifying' ? 'Time' : 'Pts'}
+            </th>
             </tr>
         </thead>
         <tbody className="divide-y divide-white/5">
@@ -363,7 +369,13 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
                     </div>
                 </td>
                 <td className="py-3 px-2 text-right hidden md:table-cell text-gray-400 text-xs uppercase tracking-wider">{r.drivers?.constructors?.name}</td>
-                <td className="py-3 px-2 text-right font-mono text-green-400 font-bold">+{r.points}</td>
+                <td className="py-3 px-2 text-right font-mono font-bold">
+                    {sessionType === 'qualifying' ? (
+                        <span className="text-white">{r.time || 'No Time'}</span>
+                    ) : (
+                        <span className="text-green-400">+{r.points}</span>
+                    )}
+                </td>
                 </tr>
             )
             })}
