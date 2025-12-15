@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  # This forces Netlify to bundle the dependencies INTO the function file
+  node_bundler = "esbuild" 
+  
+  # This ensures it doesn't try to look for them externally
+  external_node_modules = []
