@@ -2,18 +2,17 @@ import { schedule } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 
 // 1. Setup Supabase Admin Client
-// We use process.env because this runs in Node.js on Netlify
 const supabaseAdmin = createClient(
   process.env.VITE_SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-const handler = async (event) => {
+// Internal function logic (renamed to avoid naming conflict)
+const syncLogic = async (event) => {
   try {
     const currentYear = new Date().getFullYear()
     console.log(`🏁 Starting F1 Sync for ${currentYear}...`)
 
-    // 2. Fetch Season Results from Jolpica
     const response = await fetch(`http://api.jolpi.ca/ergast/f1/${currentYear}/results.json?limit=1000`)
     const data = await response.json()
     const races = data.MRData.RaceTable.Races
@@ -23,7 +22,6 @@ const handler = async (event) => {
       return { statusCode: 200 }
     }
 
-    // 3. Loop through races
     for (const race of races) {
       // Upsert Race
       const { data: dbRace, error: raceErr } = await supabaseAdmin
@@ -48,7 +46,7 @@ const handler = async (event) => {
       const results = race.Results || []
       
       for (const row of results) {
-        // Driver Info
+        // Upsert Driver
         const { data: dbDriver } = await supabaseAdmin
           .from('drivers')
           .upsert({
@@ -59,7 +57,7 @@ const handler = async (event) => {
           }, { onConflict: 'code' }) 
           .select().single()
 
-        // Constructor Info
+        // Upsert Constructor
         const { data: dbConstructor } = await supabaseAdmin
           .from('constructors')
           .upsert({
@@ -68,7 +66,7 @@ const handler = async (event) => {
           }, { onConflict: 'name' })
           .select().single()
 
-        // Result Stats
+        // Upsert Stats
         if (dbRace && dbDriver && dbConstructor) {
            await supabaseAdmin.from('race_results').upsert({
              race_id: dbRace.id,
@@ -95,5 +93,5 @@ const handler = async (event) => {
 }
 
 // 4. Schedule the Cron Job
-// The syntax is standard Cron: "0 0 * * *" = Midnight every day
-export const dailySync = schedule('0 0 * * *', handler)
+// The export MUST be named 'handler'
+export const handler = schedule('0 0 * * *', syncLogic)
