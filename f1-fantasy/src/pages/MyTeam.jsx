@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../App'
-import { getTeamColors, getRaceColors } from '../utils/colors.js' // <--- IMPORT COLORS
+import { getTeamColors, getRaceColors } from '../utils/colors.js' 
 
 const MyTeam = () => {
   const [team, setTeam] = useState(null)
@@ -45,6 +45,8 @@ const MyTeam = () => {
             .order('pick_number', { ascending: true })
         setRoster(picks || [])
 
+        // NOTE: Ensure you have a view or table for 'team_race_recaps' 
+        // that aggregates points from all sessions (race + sprint + quali)
         const { data: recapData } = await supabase
             .from('team_race_recaps')
             .select('*')
@@ -84,7 +86,7 @@ const MyTeam = () => {
     setModalLoading(false)
   }
 
-  // --- RECAP MODAL ---
+  // --- RECAP MODAL (UPDATED FOR NEW SCHEMA) ---
   const openRecapModal = async (race) => {
     setModalType('recap')
     setSelectedItem(race)
@@ -92,11 +94,15 @@ const MyTeam = () => {
     setModalData(null)
 
     const driverIds = roster.filter(p => p.driver_id).map(p => p.driver_id)
+    
+    // Fetch individual session results (Race, Sprint, Quali)
+    // using 'points' instead of 'fantasy_points' based on the sync script
     const { data: driverRes } = await supabase
         .from('race_results')
-        .select('fantasy_points, position, drivers!race_results_driver_id_fkey(name)')
+        .select('points, position, session_type, drivers!race_results_driver_id_fkey(name)')
         .eq('race_id', race.race_id)
         .in('driver_id', driverIds)
+        .order('session_type', { ascending: false }) // Group Sprints/Races somewhat
 
     const constructorId = roster.find(p => p.constructor_id)?.constructor_id
     let constructorRes = []
@@ -105,14 +111,19 @@ const MyTeam = () => {
     if (constructorId) {
         const cPick = roster.find(p => p.constructor_id)
         constructorName = cPick?.constructors?.name
+        
+        // Find all drivers for this constructor
         const { data: cDrivers } = await supabase.from('drivers').select('id').eq('constructor_id', constructorId)
-        const cDriverIds = cDrivers.map(d => d.id)
-        const { data: cRes } = await supabase
-            .from('race_results')
-            .select('fantasy_points, position, drivers!race_results_driver_id_fkey(name)')
-            .eq('race_id', race.race_id)
-            .in('driver_id', cDriverIds)
-        constructorRes = cRes || []
+        
+        if (cDrivers && cDrivers.length > 0) {
+            const cDriverIds = cDrivers.map(d => d.id)
+            const { data: cRes } = await supabase
+                .from('race_results')
+                .select('points, position, session_type, drivers!race_results_driver_id_fkey(name)')
+                .eq('race_id', race.race_id)
+                .in('driver_id', cDriverIds)
+            constructorRes = cRes || []
+        }
     }
 
     setModalData({ drivers: driverRes || [], constructor: constructorRes, constructorName })
@@ -127,7 +138,6 @@ const MyTeam = () => {
 
   // --- HELPER: CONSTRUCT GRADIENT STRING ---
   const constructGradient = (colors) => {
-    // Defines the specific style for MyTeam Page: 135deg angle
     return `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`;
   }
 
@@ -171,7 +181,7 @@ const MyTeam = () => {
                     <>
                         <div 
                           className="p-6 text-center border-b border-neutral-700 relative"
-                          style={getHeaderStyle()} // DYNAMIC GRADIENT
+                          style={getHeaderStyle()}
                         >
                             <div className="text-4xl mb-2 drop-shadow-md">{selectedItem.type === 'driver' ? '🏎️' : '🔧'}</div>
                             <h2 className="text-2xl font-black italic drop-shadow-md">{selectedItem.type === 'driver' ? selectedItem.drivers.name : selectedItem.constructors.name}</h2>
@@ -182,7 +192,8 @@ const MyTeam = () => {
                                 <>
                                     <div className="bg-neutral-700/50 p-3 rounded text-center border border-neutral-600">
                                         <div className="text-xs text-gray-400">TOTAL PTS</div>
-                                        <div className="text-2xl font-black text-green-400">{modalData.total_fantasy_points}</div>
+                                        {/* Fallback to real points if fantasy view isn't set up yet */}
+                                        <div className="text-2xl font-black text-green-400">{modalData.total_fantasy_points || modalData.total_real_points}</div>
                                     </div>
                                     <div className="bg-neutral-700/50 p-3 rounded text-center border border-neutral-600">
                                         <div className="text-xs text-gray-400">REAL PTS</div>
@@ -207,7 +218,7 @@ const MyTeam = () => {
                     <>
                         <div 
                           className="p-6 text-center border-b border-neutral-700"
-                          style={getHeaderStyle()} // DYNAMIC GRADIENT (From Country Colors)
+                          style={getHeaderStyle()} 
                         >
                             <h2 className="text-2xl font-black italic drop-shadow-md">{selectedItem.race_name}</h2>
                             <p className="text-white font-bold text-lg drop-shadow-sm">{selectedItem.total_points} pts</p>
@@ -218,13 +229,17 @@ const MyTeam = () => {
                                     <div>
                                         <h3 className="text-xs font-bold text-gray-400 mb-2 border-b border-neutral-700 pb-1">YOUR DRIVERS</h3>
                                         <div className="space-y-2">
+                                            {/* Grouped by Session Type */}
                                             {modalData.drivers.map((d, i) => (
-                                                <div key={i} className="flex justify-between items-center text-sm">
+                                                <div key={i} className="flex justify-between items-center text-sm border-b border-white/5 pb-1">
                                                     <div>
-                                                        <span className="font-bold">{d.drivers.name}</span>
-                                                        <span className="text-gray-500 text-xs ml-2">(P{d.position})</span>
+                                                        <div className="font-bold">{d.drivers.name}</div>
+                                                        <div className="flex gap-2 text-xs text-gray-500">
+                                                            <span className="uppercase font-bold text-gray-400">{d.session_type}</span>
+                                                            <span>P{d.position}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="font-mono font-bold text-green-400">{d.fantasy_points} pts</div>
+                                                    <div className="font-mono font-bold text-green-400">+{d.points}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -235,16 +250,20 @@ const MyTeam = () => {
                                             <div className="bg-neutral-900/50 p-3 rounded border border-neutral-700">
                                                 <div className="flex justify-between font-bold text-sm mb-2 text-blue-200">
                                                     <span>{modalData.constructorName}</span>
-                                                    <span>{(modalData.constructor.reduce((sum, d) => sum + d.fantasy_points, 0) / 2)} pts</span>
+                                                    {/* Calculate Constructor Total */}
+                                                    <span>{(modalData.constructor.reduce((sum, d) => sum + d.points, 0))} pts</span>
                                                 </div>
-                                                <div className="space-y-1 pl-2 border-l-2 border-blue-900">
+                                                <div className="space-y-2 pl-2 border-l-2 border-blue-900">
                                                     {modalData.constructor.map((d, i) => (
                                                         <div key={i} className="flex justify-between text-xs text-gray-400">
-                                                            <span>{d.drivers.name} (P{d.position})</span>
-                                                            <span>{d.fantasy_points}</span>
+                                                            <div>
+                                                                <span className="text-gray-300">{d.drivers.name}</span>
+                                                                <span className="mx-1 opacity-50">•</span>
+                                                                <span className="uppercase text-[10px]">{d.session_type}</span>
+                                                            </div>
+                                                            <span>{d.points}</span>
                                                         </div>
                                                     ))}
-                                                    <div className="text-[10px] text-gray-500 pt-1 italic text-right">Total divided by 2</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -290,14 +309,12 @@ const MyTeam = () => {
             <h2 className="text-xl font-bold border-b border-neutral-700 pb-2 mb-4 flex items-center gap-2"><span>🏎️</span> Active Drivers</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {drivers.map((pick) => {
-                    // 1. Get Colors
                     const colors = getTeamColors(pick.drivers.constructors?.name);
                     return (
                         <div 
                             key={pick.pick_number} 
                             onClick={() => openStatsModal(pick, 'driver')} 
                             className="p-4 rounded-xl border border-neutral-700/30 relative overflow-hidden group hover:scale-[1.02] transition transform duration-200 cursor-pointer shadow-lg"
-                            // 2. Construct Gradient specifically for this page
                             style={{ background: constructGradient(colors) }}
                         >
                             <div className="absolute top-0 right-0 bg-black/40 text-white/80 text-xs px-2 py-1 rounded-bl">Pick #{pick.pick_number}</div>
@@ -323,7 +340,6 @@ const MyTeam = () => {
                     <div 
                         onClick={() => openStatsModal(constructorPick, 'constructor')} 
                         className="p-6 rounded-xl border border-neutral-700/30 relative overflow-hidden shadow-lg cursor-pointer hover:scale-[1.02] transition transform duration-200"
-                        // 1. Get Colors & Construct Gradient
                         style={{ background: constructGradient(getTeamColors(constructorPick.constructors.name)) }}
                     >
                         <div className="absolute top-0 right-0 bg-black/40 text-white/80 text-xs px-3 py-1 rounded-bl font-bold">Constructor</div>

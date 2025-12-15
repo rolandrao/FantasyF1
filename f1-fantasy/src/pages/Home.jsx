@@ -31,29 +31,29 @@ const Home = () => {
         setSchedule(raceData.slice(1))
     }
 
-    // --- 2. GET STATS (Real AND Fantasy) ---
-    // Fetch both columns so we can use them for different panels
+    // --- 2. GET STATS (From Views) ---
+    // We use total_real_points because our new Sync Script populates real world data
     
     // A. Driver Stats
     const { data: driverStats } = await supabase
       .from('driver_stats_view')
-      .select('driver_id, total_real_points, total_fantasy_points')
+      .select('driver_id, total_real_points')
 
     // B. Constructor Stats
     const { data: constructorStats } = await supabase
       .from('constructor_stats_view')
-      .select('constructor_id, total_real_points, total_fantasy_points')
+      .select('constructor_id, total_real_points')
 
     // --- 3. GET MAPPING INFO (Names & Colors) ---
     const { data: allDrivers } = await supabase
       .from('drivers')
-      .select('id, name, constructors (name)')
+      .select('id, name, code, constructors (name)')
     
     const { data: allConstructors } = await supabase
       .from('constructors')
       .select('id, name')
 
-    // --- 4. CALCULATE LEAGUE STANDINGS (*** FANTASY POINTS ***) ---
+    // --- 4. CALCULATE LEAGUE STANDINGS ---
     const { data: teams } = await supabase
       .from('teams')
       .select('id, team_name, owner_name')
@@ -67,30 +67,31 @@ const Home = () => {
             // Find picks for this team
             const teamPicks = picks.filter(p => p.team_id === team.id)
             
-            let totalFantasy = 0
+            let totalPoints = 0
             
             teamPicks.forEach(pick => {
-                // Driver Fantasy Points
+                // Driver Points
                 if (pick.driver_id) {
                     const stat = driverStats.find(s => s.driver_id === pick.driver_id)
-                    if (stat) totalFantasy += (stat.total_fantasy_points || 0)
+                    // We use real points as the base for fantasy scoring
+                    if (stat) totalPoints += (stat.total_real_points || 0)
                 }
-                // Constructor Fantasy Points
+                // Constructor Points
                 if (pick.constructor_id) {
                     const stat = constructorStats.find(s => s.constructor_id === pick.constructor_id)
-                    if (stat) totalFantasy += (stat.total_fantasy_points || 0)
+                    if (stat) totalPoints += (stat.total_real_points || 0)
                 }
             })
 
-            return { ...team, total_points: totalFantasy }
+            return { ...team, total_points: totalPoints }
         })
 
-        // Sort by Fantasy Points (High to Low)
+        // Sort by Points (High to Low)
         calculatedStandings.sort((a, b) => b.total_points - a.total_points)
         setLeagueStandings(calculatedStandings)
     }
 
-    // --- 5. FORMAT REAL WORLD PANELS (*** REAL POINTS ***) ---
+    // --- 5. FORMAT REAL WORLD PANELS ---
     
     // WDC: Driver Real Points
     if (driverStats && allDrivers) {
@@ -101,7 +102,7 @@ const Home = () => {
                     id: stat.driver_id,
                     name: driver?.name || 'Unknown',
                     team: driver?.constructors?.name,
-                    points: stat.total_real_points // <--- REAL POINTS
+                    points: stat.total_real_points
                 }
             })
             .sort((a,b) => b.points - a.points)
@@ -117,7 +118,7 @@ const Home = () => {
                 return {
                     id: stat.constructor_id,
                     name: constructor?.name || 'Unknown',
-                    points: stat.total_real_points // <--- REAL POINTS
+                    points: stat.total_real_points
                 }
             })
             .sort((a,b) => b.points - a.points)
@@ -140,7 +141,7 @@ const Home = () => {
   const third = leagueStandings[2]
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white pb-12">
+    <div className="min-h-screen bg-neutral-900 text-white pb-24 md:pb-12">
       
       {/* --- HERO BANNER (Next Race) --- */}
       {nextRace && (
@@ -173,6 +174,7 @@ const Home = () => {
       <div className="max-w-7xl mx-auto px-4 md:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
 
         {/* --- SECTION 1: UPCOMING (Left) --- */}
+        {/* Mobile: Order 3 (Bottom) | Desktop: Order 1 (Left) */}
         <div className="lg:col-span-1 space-y-4 order-3 lg:order-1">
           <h2 className="text-xl font-bold border-b border-neutral-700 pb-2 flex items-center gap-2">
             <span>📅</span> Schedule
@@ -205,6 +207,7 @@ const Home = () => {
         </div>
 
         {/* --- SECTION 2: LEAGUE STANDINGS (Middle) --- */}
+        {/* Mobile: Order 1 (Top) | Desktop: Order 2 (Middle) */}
         <div className="lg:col-span-2 order-1 lg:order-2">
           <h2 className="text-xl font-bold border-b border-neutral-700 pb-2 flex items-center gap-2 mb-6">
             <span>🏆</span> League Standings
@@ -270,6 +273,7 @@ const Home = () => {
         </div>
 
         {/* --- SECTION 3: REAL WORLD STATS (Right) --- */}
+        {/* Mobile: Order 2 (Middle) | Desktop: Order 3 (Right) */}
         <div className="lg:col-span-1 space-y-8 order-2 lg:order-3">
           
           {/* WDC PANEL */}
@@ -277,13 +281,12 @@ const Home = () => {
             <div className="bg-neutral-900 p-3 border-b border-neutral-700 flex justify-between items-center">
               <span className="font-bold text-sm text-gray-300">🏎️ Driver's Championship</span>
             </div>
-            {/* If empty, show fallback message */}
             {wdc.length === 0 ? (
                 <div className="p-4 text-xs text-gray-500 text-center">No driver data available.</div>
             ) : (
                 <div className="divide-y divide-neutral-700">
                 {wdc.map((driver, index) => {
-                    const colors = getTeamColors(driver.team); // driver.team is set in our fetch logic now
+                    const colors = getTeamColors(driver.team);
                     return (
                     <div key={driver.id} className="p-3 flex items-center justify-between text-sm hover:bg-neutral-700/30">
                         <div className="flex items-center gap-3">

@@ -1,89 +1,24 @@
 import { schedule } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 
-// 1. Setup Supabase Admin Client
 const supabaseAdmin = createClient(
   process.env.VITE_SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// Internal function logic (renamed to avoid naming conflict)
 const syncLogic = async (event) => {
   try {
-    const currentYear = new Date().getFullYear()
-    console.log(`🏁 Starting F1 Sync for ${currentYear}...`)
+    // 1. DEFINE YEARS TO SYNC
+    // We explicitly want 2025 (historical context) and 2026 (current/future)
+    const yearsToSync = [2025, 2026]
+    
+    console.log(`🏁 Starting Multi-Year Sync: ${yearsToSync.join(', ')}`)
 
-    const response = await fetch(`http://api.jolpi.ca/ergast/f1/${currentYear}/results.json?limit=1000`)
-    const data = await response.json()
-    const races = data.MRData.RaceTable.Races
-
-    if (!races || races.length === 0) {
-      console.log("No races found.")
-      return { statusCode: 200 }
+    // Loop through each year
+    for (const year of yearsToSync) {
+        await syncSeason(year)
     }
 
-    for (const race of races) {
-      // Upsert Race
-      const { data: dbRace, error: raceErr } = await supabaseAdmin
-        .from('races')
-        .upsert({
-          year: parseInt(race.season),
-          round: parseInt(race.round),
-          name: race.raceName,
-          date: race.date,
-          circuit: race.Circuit.circuitName,
-          country: race.Circuit.Location.country
-        }, { onConflict: 'year, round' })
-        .select()
-        .single()
-
-      if (raceErr) {
-        console.error(`Error syncing race ${race.raceName}:`, raceErr)
-        continue
-      }
-
-      // Upsert Results
-      const results = race.Results || []
-      
-      for (const row of results) {
-        // Upsert Driver
-        const { data: dbDriver } = await supabaseAdmin
-          .from('drivers')
-          .upsert({
-            name: `${row.Driver.givenName} ${row.Driver.familyName}`,
-            number: parseInt(row.number),
-            nationality: row.Driver.nationality,
-            code: row.Driver.code || row.Driver.driverId.substring(0,3).toUpperCase()
-          }, { onConflict: 'code' }) 
-          .select().single()
-
-        // Upsert Constructor
-        const { data: dbConstructor } = await supabaseAdmin
-          .from('constructors')
-          .upsert({
-            name: row.Constructor.name,
-            nationality: row.Constructor.nationality
-          }, { onConflict: 'name' })
-          .select().single()
-
-        // Upsert Stats
-        if (dbRace && dbDriver && dbConstructor) {
-           await supabaseAdmin.from('race_results').upsert({
-             race_id: dbRace.id,
-             driver_id: dbDriver.id,
-             constructor_id: dbConstructor.id,
-             position: parseInt(row.position),
-             points: parseFloat(row.points),
-             grid: parseInt(row.grid),
-             status: row.status,
-             fastest_lap_rank: row.FastestLap?.rank || null,
-             fastest_lap_time: row.FastestLap?.Time?.time || null
-           }, { onConflict: 'race_id, driver_id' })
-        }
-      }
-    }
-
-    console.log(`✅ Synced ${races.length} races.`)
     return { statusCode: 200 }
 
   } catch (error) {
@@ -92,6 +27,105 @@ const syncLogic = async (event) => {
   }
 }
 
-// 4. Schedule the Cron Job
-// The export MUST be named 'handler'
+// Helper function to handle a specific year
+const syncSeason = async (year) => {
+    console.log(`--- Syncing Season ${year} ---`)
+
+    // A. SYNC SCHEDULE
+    const scheduleResp = await fetch(`http://api.jolpi.ca/ergast/f1/${year}.json`)
+    const scheduleData = await scheduleResp.json()
+    const allRaces = scheduleData.MRData.RaceTable.Races
+
+    if (!allRaces || allRaces.length === 0) {
+        console.log(`No data found for ${year} yet.`)
+        return
+    }
+
+    for (const race of allRaces) {
+      if (race.raceName.includes('Test') || race.round === "0") continue;
+
+      const { error: raceErr } = await supabaseAdmin
+        .from('races')
+        .upsert({
+          year: parseInt(race.season),
+          round: parseInt(race.round),
+          name: race.raceName,
+          date: race.date,
+          time: race.time, 
+          circuit: race.Circuit.circuitName,
+          country: race.Circuit.Location.country,
+          // Optional: You can map FP/Quali times here if needed
+        }, { onConflict: 'year, round' })
+      
+      if (raceErr) console.error(`Error syncing ${year} ${race.raceName}:`, raceErr)
+    }
+    console.log(`✅ ${year} Schedule Synced`)
+
+
+    // B. PROCESS RESULTS (Helper)
+    const fetchAndUpsert = async (url, sessionType) => {
+      const resp = await fetch(url)
+      const data = await resp.json()
+      const races = data.MRData.RaceTable.Races
+
+      if (!races.length) return;
+
+      for (const race of races) {
+        // Find Race ID
+        const { data: dbRace } = await supabaseAdmin
+          .from('races')
+          .select('id')
+          .eq('year', parseInt(race.season))
+          .eq('round', parseInt(race.round))
+          .single()
+
+        if (!dbRace) continue;
+
+        // Determine list
+        const resultList = race.Results || race.QualifyingResults || race.SprintResults || []
+
+        for (const row of resultList) {
+           // Upsert Driver
+           const { data: dbDriver } = await supabaseAdmin
+             .from('drivers')
+             .upsert({
+                name: `${row.Driver.givenName} ${row.Driver.familyName}`,
+                number: parseInt(row.number),
+                nationality: row.Driver.nationality,
+                code: row.Driver.code || row.Driver.driverId.substring(0,3).toUpperCase()
+             }, { onConflict: 'code' }).select().single()
+
+           // Upsert Constructor
+           const { data: dbConstructor } = await supabaseAdmin
+             .from('constructors')
+             .upsert({
+                name: row.Constructor.name,
+                nationality: row.Constructor.nationality
+             }, { onConflict: 'name' }).select().single()
+
+           // Upsert Result
+           if (dbDriver && dbConstructor) {
+             await supabaseAdmin.from('race_results').upsert({
+               race_id: dbRace.id,
+               driver_id: dbDriver.id,
+               constructor_id: dbConstructor.id,
+               session_type: sessionType,
+               position: parseInt(row.position),
+               points: parseFloat(row.points || 0),
+               grid: parseInt(row.grid || 0),
+               status: row.status,
+               fastest_lap_time: row.FastestLap?.Time?.time || null
+             }, { onConflict: 'race_id, driver_id, session_type' })
+           }
+        }
+      }
+      console.log(`✅ ${year} ${sessionType} results synced`)
+    }
+
+    // C. EXECUTE FETCHES FOR THIS YEAR
+    await fetchAndUpsert(`http://api.jolpi.ca/ergast/f1/${year}/results.json?limit=1000`, 'race')
+    await fetchAndUpsert(`http://api.jolpi.ca/ergast/f1/${year}/sprint.json?limit=1000`, 'sprint')
+    await fetchAndUpsert(`http://api.jolpi.ca/ergast/f1/${year}/qualifying.json?limit=1000`, 'qualifying')
+}
+
 export const handler = schedule('0 0 * * *', syncLogic)
