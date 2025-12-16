@@ -318,8 +318,9 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
             points, 
             status,
             time:fastest_lap_time, 
-            drivers (name, code, constructors (name))
-        `)
+            drivers (name, code),
+            constructors (name)
+        `) // <--- Pull constructors directly from the result
         .eq('race_id', raceId)
         .eq('session_type', sessionType) 
         .order('position', { ascending: true })
@@ -350,7 +351,9 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
         </thead>
         <tbody className="divide-y divide-white/5">
             {results.map((r) => {
-            const colors = getTeamColors(r.drivers?.constructors?.name)
+            // UPDATED: Use the direct constructor name
+            const colors = getTeamColors(r.constructors?.name)
+            
             return (
                 <tr key={r.position} className="hover:bg-white/5 transition group">
                 <td className={`py-3 px-2 text-center font-mono font-bold ${r.position === 1 ? 'text-yellow-400' : 'text-gray-400'}`}>
@@ -358,17 +361,21 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
                 </td>
                 <td className="py-3 px-2">
                     <div className="flex items-center gap-3">
+                        {/* The Color Strip */}
                         <div className="w-1 h-8 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.1)]" style={{ background: colors.primary }}></div>
                         <div>
                             <div className="font-bold flex items-center gap-2">
                                 {r.drivers?.name}
                                 <span className="text-[10px] text-gray-600 font-mono hidden md:inline-block">{r.drivers?.code}</span>
                             </div>
-                            <div className="text-[10px] text-gray-500 uppercase md:hidden">{r.drivers?.constructors?.name}</div>
+                            {/* Mobile Team Name */}
+                            <div className="text-[10px] text-gray-500 uppercase md:hidden">{r.constructors?.name}</div>
                         </div>
                     </div>
                 </td>
-                <td className="py-3 px-2 text-right hidden md:table-cell text-gray-400 text-xs uppercase tracking-wider">{r.drivers?.constructors?.name}</td>
+                {/* Desktop Team Name */}
+                <td className="py-3 px-2 text-right hidden md:table-cell text-gray-400 text-xs uppercase tracking-wider">{r.constructors?.name}</td>
+                
                 <td className="py-3 px-2 text-right font-mono font-bold">
                     {sessionType === 'qualifying' ? (
                         <span className="text-white">{r.time || 'No Time'}</span>
@@ -384,5 +391,4 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
     </div>
   )
 }
-
 export default F1Hub

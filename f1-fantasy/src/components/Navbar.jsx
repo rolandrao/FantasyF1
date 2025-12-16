@@ -31,6 +31,7 @@ const Navbar = () => {
           <Link to="/league" className={`hover:text-white transition ${isActive('/league')}`}>League</Link>
           <Link to="/draft" className={`hover:text-white transition ${isActive('/draft')}`}>Draft Room</Link>
           <Link to="/team" className={`hover:text-white transition ${isActive('/team')}`}>My Team</Link>
+
           
           {/* Desktop Logout (Always visible on desktop) */}
           {location.pathname === '/team' && (<button 

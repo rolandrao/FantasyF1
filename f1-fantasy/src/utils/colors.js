@@ -31,7 +31,7 @@ const RACE_COLORS = {
   'japan': { primary: '#ffffff', secondary: '#bc002d' }, 
   
   // CHINA (Red/Yellow)
-  'china': { primary: '#ee1c25', secondary: '#ffff00' }, 
+  'chinese': { primary: '#ee1c25', secondary: '#ffff00' }, 
   
   // USA - MIAMI (Teal/Pink - Vice City Theme)
   'miami': { primary: '#00a19c', secondary: '#f68fbe' }, 
@@ -44,30 +44,30 @@ const RACE_COLORS = {
   'monaco': { primary: '#ce1126', secondary: '#ffffff' }, 
   
   // CANADA (Red/White - Maple Leaf)
-  'canada': { primary: '#ff0000', secondary: '#ffffff' }, 
+  'canadian': { primary: '#ff0000', secondary: '#ffffff' }, 
   
   // SPAIN (Red/Yellow)
-  'spain': { primary: '#aa151b', secondary: '#f1bf00' }, 
+  'barcelona': { primary: '#aa151b', secondary: '#f1bf00' }, 
   
   // AUSTRIA (Red/White)
   'austria': { primary: '#ef3340', secondary: '#ffffff' }, 
   
   // GREAT BRITAIN (Navy/Red)
-  'britain': { primary: '#012169', secondary: '#c8102e' }, 
+  'british': { primary: '#012169', secondary: '#c8102e' }, 
   'silverstone': { primary: '#012169', secondary: '#c8102e' }, 
   
   // HUNGARY (Green/Red/White)
-  'hungary': { primary: '#477050', secondary: '#ce2939' }, 
+  'hungarian': { primary: '#477050', secondary: '#ce2939' }, 
   
   // BELGIUM (Black/Yellow/Red)
-  'belgium': { primary: '#fae042', secondary: '#000000' }, 
+  'belgian': { primary: '#fae042', secondary: '#000000' }, 
   
   // NETHERLANDS (Orange - National Color)
   'netherlands': { primary: '#ff4f00', secondary: '#ffffff' }, 
   'dutch': { primary: '#ff4f00', secondary: '#ffffff' },
   
   // ITALY - MONZA (Red/White/Green - Distinct from Imola)
-  'italy': { primary: '#ce2b37', secondary: '#009246' }, 
+  'italian': { primary: '#ce2b37', secondary: '#009246' }, 
   'monza': { primary: '#ce2b37', secondary: '#009246' }, 
   
   // AZERBAIJAN (Blue/Red/Green)
@@ -79,13 +79,13 @@ const RACE_COLORS = {
   
   // USA - AUSTIN (Navy/Red - Stars & Stripes)
   'usa': { primary: '#002868', secondary: '#bf0a30' }, 
-  'austin': { primary: '#002868', secondary: '#bf0a30' }, 
+  'states': { primary: '#002868', secondary: '#bf0a30' }, 
   
   // MEXICO (Green/Red)
   'mexico': { primary: '#006847', secondary: '#ce1126' }, 
   
   // BRAZIL (Green/Yellow)
-  'brazil': { primary: '#009c3b', secondary: '#ffdf00' }, 
+  'brazilian': { primary: '#009c3b', secondary: '#ffdf00' }, 
   
   // USA - LAS VEGAS (Black/Gold/Neon Red)
   'vegas': { primary: '#000000', secondary: '#d4af37' }, 
@@ -95,6 +95,9 @@ const RACE_COLORS = {
   
   // ABU DHABI (Green/Red/White/Black)
   'abu dhabi': { primary: '#007a3d', secondary: '#ce1126' }, 
+
+  // SPAIN - Madring (Red/Yellow)
+  'spanish': { primary: '#aa151b', secondary: '#f1bf00' },
   
   // Default
   'default': { primary: '#333333', secondary: '#000000' },

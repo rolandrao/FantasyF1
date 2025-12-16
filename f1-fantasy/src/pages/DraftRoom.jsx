@@ -75,7 +75,7 @@ const DraftRoom = () => {
       .select(`
         pick_number, driver_id, constructor_id, picked_at,
         teams (id, team_name, owner_name, is_bot),
-        drivers!draft_picks_driver_id_fkey (name, constructors (name)), 
+        drivers!draft_picks_driver_id_fkey (name, team), 
         constructors!draft_picks_constructor_id_fkey (name)
       `)
       .order('pick_number', { ascending: true })
@@ -108,8 +108,9 @@ const DraftRoom = () => {
     const takenDrivers = picks.map(p => p.driver_id).filter(Boolean)
     const takenConstructors = picks.map(p => p.constructor_id).filter(Boolean)
 
-    const { data: drivers } = await supabase.from('drivers').select('*, constructors (name)')
-    const { data: constructors } = await supabase.from('constructors').select('*')
+    // UPDATED: We just select '*' to get the new 'team' column
+    const { data: drivers } = await supabase.from('drivers').select('*').eq('year', 2026)
+    const { data: constructors } = await supabase.from('constructors').select('*').eq('year', 2026)
 
     setAvailableDrivers((drivers || []).filter(d => !takenDrivers.includes(d.id)).sort((a,b) => a.name.localeCompare(b.name)))
     setAvailableConstructors((constructors || []).filter(c => !takenConstructors.includes(c.id)))
@@ -208,10 +209,9 @@ const DraftRoom = () => {
         <div className="flex-1 overflow-y-auto bg-neutral-900 p-4 pb-48">
             {activeTab === 'market' && (
                 <>
-                {/* --- UPDATE 1: ADD UNIQUE LAYOUT-ID --- */}
                 <div className="mb-4">
                      <LiquidTabs 
-                         layoutId="market-filter-tabs" // UNIQUE ID
+                         layoutId="market-filter-tabs" 
                          options={[{id: 'drivers', label: 'Drivers'}, {id: 'constructors', label: 'Teams'}]}
                          activeId={marketFilter}
                          onChange={setMarketFilter}
@@ -220,16 +220,20 @@ const DraftRoom = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">
-                    {marketFilter === 'drivers' ? availableDrivers.map(d => (
-                         <button key={d.id} disabled={!isMyTurn} onClick={() => triggerDraftModal(d, 'driver')} className={`flex items-center gap-3 p-3 rounded-xl border text-left relative overflow-hidden ${!isMyTurn ? 'opacity-60 border-neutral-800' : 'border-neutral-700/50'}`} style={{ background: getTeamGradient(d.constructors?.name) }}>
-                             <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-lg shadow-inner z-10 border border-white/10">🏎️</div>
-                             <div className="z-10 relative">
-                                 <div className="font-black text-sm text-white drop-shadow-md">{d.name}</div>
-                                 <div className="text-[10px] font-bold text-white/70 uppercase tracking-wider">{d.constructors?.name || 'Free Agent'}</div>
-                             </div>
-                             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] bg-[length:10px_10px]"></div>
-                         </button>
-                    )) : availableConstructors.map(c => (
+                    {marketFilter === 'drivers' ? availableDrivers.map(d => {
+                         // COLOR FIX: Use the 'team' column from drivers table
+                         const teamName = d.team || 'Free Agent'
+                         return (
+                            <button key={d.id} disabled={!isMyTurn} onClick={() => triggerDraftModal(d, 'driver')} className={`flex items-center gap-3 p-3 rounded-xl border text-left relative overflow-hidden ${!isMyTurn ? 'opacity-60 border-neutral-800' : 'border-neutral-700/50'}`} style={{ background: getTeamGradient(teamName) }}>
+                                <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-lg shadow-inner z-10 border border-white/10">🏎️</div>
+                                <div className="z-10 relative">
+                                    <div className="font-black text-sm text-white drop-shadow-md">{d.name}</div>
+                                    <div className="text-[10px] font-bold text-white/70 uppercase tracking-wider">{teamName}</div>
+                                </div>
+                                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] bg-[length:10px_10px]"></div>
+                            </button>
+                         )
+                    }) : availableConstructors.map(c => (
                          <button key={c.id} disabled={!isMyTurn} onClick={() => triggerDraftModal(c, 'constructor')} className={`flex items-center gap-3 p-3 rounded-xl border text-left relative overflow-hidden ${!isMyTurn ? 'opacity-60 border-neutral-800' : 'border-neutral-700/50'}`} style={{ background: getTeamGradient(c.name) }}>
                              <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-lg shadow-inner z-10 border border-white/10">🔧</div>
                              <div className="z-10 relative">
@@ -258,10 +262,9 @@ const DraftRoom = () => {
             )}
         </div>
 
-        {/* --- UPDATE 2: MOVED UP (bottom-32) & UNIQUE LAYOUT-ID --- */}
         <div className="flex-none fixed bottom-28 left-6 right-6 z-40">
              <LiquidTabs 
-                 layoutId="mobile-view-tabs" // UNIQUE ID
+                 layoutId="mobile-view-tabs" 
                  options={[{ id: 'market', label: 'MARKET' }, { id: 'board', label: 'BOARD' }]}
                  activeId={activeTab}
                  onChange={setActiveTab}
@@ -342,7 +345,8 @@ const DraftRoom = () => {
                 <h2 className="text-xl font-black italic mb-4 flex items-center gap-2"><span className="text-f1-red">🏎️</span> AVAILABLE DRIVERS</h2>
                 <div className="grid grid-cols-3 gap-3">
                     {availableDrivers.map(d => {
-                        const teamName = d.constructors?.name || 'Free Agent'
+                        // COLOR FIX: Use the 'team' column from drivers table
+                        const teamName = d.team || 'Free Agent'
                         return (
                             <button 
                                 key={d.id} 
