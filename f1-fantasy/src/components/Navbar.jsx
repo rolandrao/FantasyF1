@@ -31,15 +31,8 @@ const Navbar = () => {
           <Link to="/league" className={`hover:text-white transition ${isActive('/league')}`}>League</Link>
           <Link to="/draft" className={`hover:text-white transition ${isActive('/draft')}`}>Draft Room</Link>
           <Link to="/team" className={`hover:text-white transition ${isActive('/team')}`}>My Team</Link>
+          <Link to="/settings" className={`hidden md:block hover:text-white transition ${isActive('/settings')}`}>Settings</Link>
 
-          
-          {/* Desktop Logout (Always visible on desktop) */}
-          {location.pathname === '/team' && (<button 
-            onClick={handleLogout} 
-            className="ml-4 border border-red-600 text-red-600 hover:bg-red-600 hover:text-white px-4 py-1 rounded transition"
-          >
-            LOG OUT
-          </button>)}
         </div>
       </nav>
 

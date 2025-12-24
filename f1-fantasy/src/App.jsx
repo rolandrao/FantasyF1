@@ -9,6 +9,7 @@ import League from './pages/League'
 import F1Hub from './pages/F1Hub'
 import GlassNav from './components/GlassNav' 
 import Navbar from './components/Navbar'
+import Settings from './pages/Settings'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -53,6 +54,7 @@ function App() {
           <Route path="/team" element={<MyTeam />} />
           <Route path="/league" element={<League />} />
           <Route path="/f1hub" element={<F1Hub />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
 
