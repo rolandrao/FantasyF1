@@ -95,12 +95,15 @@ const F1Hub = () => {
           const { raw } = formatToNYTime(r.date, r.time)
           return raw > new Date()
       })
-      const targetId = nextRace ? nextRace.id : races[races.length - 1].id
-      
-      const element = document.getElementById(`race-${targetId}`)
-      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+      // FIX: Only scroll if a future race actually exists.
+      // If 'nextRace' is undefined (past season), do nothing -> stays at top.
+      if (nextRace) {
+          const element = document.getElementById(`race-${nextRace.id}`)
+          if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
     }
-  }, [loading, races])
+  }, [loading, races]) 
 
   return (
     <div className="min-h-screen bg-neutral-900 text-white pb-24">
@@ -224,6 +227,13 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
   const raceColors = getRaceColors(race.name)
   const [activeSession, setActiveSession] = useState('race')
 
+  // 1. CONDITIONAL TABS
+  // We always show Race and Qualifying. We only add Sprint if the DB says so.
+  const sessions = ['Race', 'Qualifying']
+  if (race.is_sprint_weekend) {
+      sessions.push('Sprint')
+  }
+
   return (
     <div 
         id={`race-${race.id}`}
@@ -243,10 +253,11 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
             <div className="flex items-center gap-2 mb-1">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Round {race.round}</div>
                 {isFuture && <div className="text-[10px] font-bold uppercase bg-blue-900 text-blue-200 px-1.5 rounded">Upcoming</div>}
+                {/* Optional Badge for Sprint Weekends */}
+                {race.is_sprint_weekend && <div className="text-[10px] font-bold uppercase bg-orange-900 text-orange-200 px-1.5 rounded">Sprint</div>}
             </div>
             <h3 className="text-xl md:text-2xl font-black italic text-white/90">{race.name}</h3>
             <div className="flex items-center gap-2 text-sm text-gray-400 mt-1">
-                {/* 2. DISPLAY NY DATE */}
                 <span>{ny.date}</span>
                 <span>•</span>
                 <span>{race.circuit}</span>
@@ -257,7 +268,6 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
              {isFuture ? (
                  <div className="text-right bg-black/20 p-2 rounded-lg border border-white/5">
                     <div className="text-[10px] uppercase text-gray-500 font-bold">Lights Out (ET)</div>
-                    {/* 3. DISPLAY NY TIME */}
                     <div className="font-mono font-bold text-lg text-yellow-400">{ny.time}</div>
                  </div>
              ) : (
@@ -278,7 +288,8 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
             className="border-t border-white/10 bg-black/20"
           >
             <div className="flex items-center gap-1 p-2 border-b border-white/5 overflow-x-auto">
-               {['Race', 'Qualifying', 'Sprint'].map(session => (
+               {/* 2. MAP OVER OUR DYNAMIC 'sessions' ARRAY */}
+               {sessions.map(session => (
                  <button
                    key={session}
                    onClick={() => setActiveSession(session.toLowerCase())}
