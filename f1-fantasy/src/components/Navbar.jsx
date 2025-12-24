@@ -15,6 +15,10 @@ const Navbar = () => {
     }
   }
 
+  if (location.pathname === '/') {
+    return null
+  }
+
   return (
     <>
       {/* ==================================================================
@@ -26,7 +30,7 @@ const Navbar = () => {
         </div>
         
         <div className="flex gap-8 font-bold text-sm uppercase tracking-widest items-center">
-          <Link to="/" className={`hover:text-white transition ${isActive('/')}`}>Home</Link>
+          <Link to="/home" className={`hover:text-white transition ${isActive('/home')}`}>Home</Link>
           <Link to="/f1hub" className={`hover:text-white transition ${isActive('/f1')}`}>F1</Link>
           <Link to="/league" className={`hover:text-white transition ${isActive('/league')}`}>League</Link>
           <Link to="/draft" className={`hover:text-white transition ${isActive('/draft')}`}>Draft Room</Link>

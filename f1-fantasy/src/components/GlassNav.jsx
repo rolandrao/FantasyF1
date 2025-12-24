@@ -6,7 +6,7 @@ const GlassNav = () => {
 
   // Define your navigation items here
   const navItems = [
-    { id: 'home', label: 'Home', path: '/', icon: '🏠' },
+    { id: 'home', label: 'Home', path: '/home', icon: '🏠' },
     { id: 'f1hub', label: 'F1 Hub', path: '/f1hub', icon: '🏁' },
     { id: 'league', label: 'League', path: '/league', icon: '👥' },
     { id: 'team', label: 'My Team', path: '/team', icon: '🧢' },
@@ -14,6 +14,10 @@ const GlassNav = () => {
     // Add Admin or Rules if needed
     // { id: 'admin', label: 'Admin', path: '/admin', icon: '⚙️' }, 
   ]
+
+  if (location.pathname === '/') {
+    return null
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pb-6 md:pb-4 pointer-events-none flex justify-center">

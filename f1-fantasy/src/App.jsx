@@ -48,8 +48,8 @@ function App() {
          ===================================================== */}
       <main className="flex-1 relative w-full overflow-x-hidden pb-24 md:pb-10">
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/" element={<Login />} />
           <Route path="/draft" element={<DraftRoom />} />
           <Route path="/team" element={<MyTeam />} />
           <Route path="/league" element={<League />} />

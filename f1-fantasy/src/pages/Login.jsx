@@ -12,7 +12,7 @@ const Login = () => {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) navigate('/')
+      if (user) navigate('/home')
     }
     checkUser()
   }, [navigate])
