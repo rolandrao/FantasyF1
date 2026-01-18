@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../App'
 import { getRaceColors, getTeamColors } from '../utils/colors'
-import { formatToNYTime } from '../utils/date' // <--- IMPORT THIS
+import { formatToNYTime } from '../utils/date'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const F1Hub = () => {
@@ -38,20 +38,32 @@ const F1Hub = () => {
 
     setRaces(raceData)
 
-    // 2. Fetch Results
+    // 2. Fetch Results (Using real_points for F1 Hub)
     const raceIds = raceData.map(r => r.id)
-    const { data: results } = await supabase
-        .from('race_results')
-        .select(`
-            points,
-            driver_id,
-            constructor_id,
-            drivers (id, name, code, constructors(name)),
-            constructors (id, name)
-        `)
-        .in('race_id', raceIds)
+    const { data: results, error } = await supabase
+    .from('race_results')
+    .select(`
+        real_points,
+        fantasy_points,
+        position,
+        session_type,
+        driver_id,
+        constructor_id,
+        drivers (
+            id, 
+            name, 
+            code
+        ),
+        constructors (
+            id, 
+            name
+        )
+    `)
+    .in('race_id', raceIds);
 
-    // 3. Calculate Standings
+    // console.log("Race Results: ", results);
+
+    // 3. Calculate Standings (Summing real_points)
     const dMap = {}
     const cMap = {}
 
@@ -66,7 +78,7 @@ const F1Hub = () => {
                 points: 0 
             }
         }
-        dMap[dId].points += (r.points || 0)
+        dMap[dId].points += (r.real_points || 0)
 
         const cId = r.constructor_id
         if (!cMap[cId]) {
@@ -76,28 +88,27 @@ const F1Hub = () => {
                 points: 0 
             }
         }
-        cMap[cId].points += (r.points || 0)
+        cMap[cId].points += (r.real_points || 0)
     })
 
-    const sortedDrivers = Object.values(dMap).sort((a,b) => b.points - a.points).slice(0, 5)
-    const sortedConstructors = Object.values(cMap).sort((a,b) => b.points - a.points).slice(0, 5)
+    // console.log("Constructor Map: ", cMap);
+
+    const sortedDrivers = Object.values(dMap).sort((a,b) => b.points - a.points).slice(0, 5) // Top 10
+    const sortedConstructors = Object.values(cMap).sort((a,b) => b.points - a.points).slice(0, 5) // Top 5
 
     setDriversStandings(sortedDrivers)
     setConstructorsStandings(sortedConstructors)
     setLoading(false)
   }
 
-  // Auto-scroll
+  // Auto-scroll to next race
   useEffect(() => {
     if (!loading && races.length > 0) {
-      // Logic: Find first race in the future
       const nextRace = races.find(r => {
           const { raw } = formatToNYTime(r.date, r.time)
           return raw > new Date()
       })
 
-      // FIX: Only scroll if a future race actually exists.
-      // If 'nextRace' is undefined (past season), do nothing -> stays at top.
       if (nextRace) {
           const element = document.getElementById(`race-${nextRace.id}`)
           if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -140,7 +151,6 @@ const F1Hub = () => {
              <div className="text-center py-20 text-gray-500">No data available for {selectedSeason} yet.</div> 
           ) : (
             races.map((race) => {
-               // 1. USE THE UTILITY TO GET NY TIME & CHECK FUTURE STATUS
                const ny = formatToNYTime(race.date, race.time)
                const isFuture = ny.raw > new Date()
 
@@ -148,7 +158,7 @@ const F1Hub = () => {
                 <RaceCard 
                   key={race.id} 
                   race={race} 
-                  ny={ny} // Pass the NY object down
+                  ny={ny} 
                   isFuture={isFuture}
                   isExpanded={expandedRaceId === race.id}
                   onToggle={() => setExpandedRaceId(expandedRaceId === race.id ? null : race.id)}
@@ -227,8 +237,7 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
   const raceColors = getRaceColors(race.name)
   const [activeSession, setActiveSession] = useState('race')
 
-  // 1. CONDITIONAL TABS
-  // We always show Race and Qualifying. We only add Sprint if the DB says so.
+  // Always show Race & Quali. Add Sprint if needed.
   const sessions = ['Race', 'Qualifying']
   if (race.is_sprint_weekend) {
       sessions.push('Sprint')
@@ -253,7 +262,6 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
             <div className="flex items-center gap-2 mb-1">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Round {race.round}</div>
                 {isFuture && <div className="text-[10px] font-bold uppercase bg-blue-900 text-blue-200 px-1.5 rounded">Upcoming</div>}
-                {/* Optional Badge for Sprint Weekends */}
                 {race.is_sprint_weekend && <div className="text-[10px] font-bold uppercase bg-orange-900 text-orange-200 px-1.5 rounded">Sprint</div>}
             </div>
             <h3 className="text-xl md:text-2xl font-black italic text-white/90">{race.name}</h3>
@@ -288,7 +296,6 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
             className="border-t border-white/10 bg-black/20"
           >
             <div className="flex items-center gap-1 p-2 border-b border-white/5 overflow-x-auto">
-               {/* 2. MAP OVER OUR DYNAMIC 'sessions' ARRAY */}
                {sessions.map(session => (
                  <button
                    key={session}
@@ -322,16 +329,17 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
     const fetchResults = async () => {
       setLoading(true)
       
+      // Use real_points for F1 Hub
       const { data } = await supabase
         .from('race_results')
         .select(`
             position, 
-            points, 
+            real_points, 
             status,
             time:fastest_lap_time, 
             drivers (name, code),
             constructors (name)
-        `) // <--- Pull constructors directly from the result
+        `) 
         .eq('race_id', raceId)
         .eq('session_type', sessionType) 
         .order('position', { ascending: true })
@@ -362,7 +370,6 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
         </thead>
         <tbody className="divide-y divide-white/5">
             {results.map((r) => {
-            // UPDATED: Use the direct constructor name
             const colors = getTeamColors(r.constructors?.name)
             
             return (
@@ -372,26 +379,23 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
                 </td>
                 <td className="py-3 px-2">
                     <div className="flex items-center gap-3">
-                        {/* The Color Strip */}
                         <div className="w-1 h-8 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.1)]" style={{ background: colors.primary }}></div>
                         <div>
                             <div className="font-bold flex items-center gap-2">
                                 {r.drivers?.name}
                                 <span className="text-[10px] text-gray-600 font-mono hidden md:inline-block">{r.drivers?.code}</span>
                             </div>
-                            {/* Mobile Team Name */}
                             <div className="text-[10px] text-gray-500 uppercase md:hidden">{r.constructors?.name}</div>
                         </div>
                     </div>
                 </td>
-                {/* Desktop Team Name */}
                 <td className="py-3 px-2 text-right hidden md:table-cell text-gray-400 text-xs uppercase tracking-wider">{r.constructors?.name}</td>
                 
                 <td className="py-3 px-2 text-right font-mono font-bold">
                     {sessionType === 'qualifying' ? (
                         <span className="text-white">{r.time || 'No Time'}</span>
                     ) : (
-                        <span className="text-green-400">+{r.points}</span>
+                        <span className="text-green-400">+{r.real_points}</span>
                     )}
                 </td>
                 </tr>

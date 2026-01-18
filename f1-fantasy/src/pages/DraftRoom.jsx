@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../App'
 import DraftConfirmationModal from '../components/DraftConfirmationModal'
 import LiquidTabs from '../components/LiquidTabs' 
@@ -22,12 +22,13 @@ const DraftRoom = () => {
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
 
-  // --- COLOR LOGIC ---
+  const botProcessingRef = useRef(false)
+
+  // ... (Keep getTeamGradient helper here) ...
   const getTeamGradient = (teamName) => {
     if (!teamName) return 'linear-gradient(110deg, #1e1e1e 40%, #444444 100%)'
     const lower = teamName.toLowerCase()
     let color = '#444444' 
-
     if (lower.includes('red bull')) color = '#1E41FF'       
     else if (lower.includes('ferrari')) color = '#FF2800'   
     else if (lower.includes('mercedes')) color = '#00D2BE'  
@@ -39,7 +40,6 @@ const DraftRoom = () => {
     else if (lower.includes('stake') || lower.includes('audi') || lower.includes('sauber')) color = '#52E252' 
     else if (lower.includes('rb') || lower.includes('alpha')) color = '#1634CB' 
     else if (lower.includes('cadillac')) color = '#D4AF37'  
-
     return `linear-gradient(110deg, #1e1e1e 40%, ${color} 100%)`
   }
 
@@ -67,6 +67,28 @@ const DraftRoom = () => {
     const parts = name.split(' ')
     const target = parts.length > 1 ? parts[parts.length - 1] : parts[0]
     return target.substring(0, 3).toUpperCase()
+  }
+
+  // --- NEW: Helper to sync with Rosters Table ---
+  const addToRoster = async (teamId, assetId, type) => {
+      // 1. Fetch current roster row (if exists)
+      const { data: current } = await supabase.from('rosters').select('*').eq('team_id', teamId).single()
+      
+      let payload = { team_id: teamId }
+      if (current) payload = { ...current } // Clone existing data
+      
+      if (type === 'constructor') {
+          payload.constructor_id = assetId
+      } else {
+          // Find first empty driver slot
+          if (!payload.driver_1_id) payload.driver_1_id = assetId
+          else if (!payload.driver_2_id) payload.driver_2_id = assetId
+          else if (!payload.driver_3_id) payload.driver_3_id = assetId
+      }
+      
+      // Upsert ensures we create the row if it's the team's first pick
+      const { error } = await supabase.from('rosters').upsert(payload)
+      if (error) console.error("Roster Sync Error:", error)
   }
 
   const refreshDraftState = async () => {
@@ -100,7 +122,7 @@ const DraftRoom = () => {
     
     if (nextUp) {
       const idx = picks.indexOf(nextUp)
-      setUpcomingPicks(picks.slice(idx, idx + 6)) // Show next 6
+      setUpcomingPicks(picks.slice(idx, idx + 6)) 
     } else {
       setUpcomingPicks([])
     }
@@ -108,7 +130,6 @@ const DraftRoom = () => {
     const takenDrivers = picks.map(p => p.driver_id).filter(Boolean)
     const takenConstructors = picks.map(p => p.constructor_id).filter(Boolean)
 
-    // UPDATED: We just select '*' to get the new 'team' column
     const { data: drivers } = await supabase.from('drivers').select('*').eq('year', 2026)
     const { data: constructors } = await supabase.from('constructors').select('*').eq('year', 2026)
 
@@ -130,34 +151,81 @@ const DraftRoom = () => {
     const type = draftModal.type
     setDraftModal({ show: false, item: null, type: null, pickNumber: null }) 
     setLoading(true)
+    
     const col = type === 'driver' ? 'driver_id' : 'constructor_id'
-    const { error } = await supabase.from('draft_picks').update({ [col]: item.id, picked_at: new Date() }).eq('pick_number', currentPick.pick_number)
+    
+    const { error } = await supabase
+        .from('draft_picks')
+        .update({ [col]: item.id, picked_at: new Date() })
+        .eq('pick_number', currentPick.pick_number)
+    
     if (!error) { 
+        // --- SYNC TO ROSTERS TABLE ---
+        await addToRoster(currentPick.teams.id, item.id, type)
+        
         showToast("Pick Confirmed!", "success")
         await refreshDraftState()
     } else {
-        showToast(error.message, "error")
+        if (error.code === '23505') showToast("Too slow! That asset was just taken.", "error")
+        else showToast(error.message, "error")
     }
     setLoading(false)
   }
 
   const simulateBotPick = async () => {
+    if (botProcessingRef.current || loading) return
+    botProcessingRef.current = true
     setLoading(true)
-    const { data: botPicks } = await supabase.from('draft_picks').select('driver_id, constructor_id').eq('team_id', currentPick.teams.id)
-    const dCount = botPicks.filter(p => p.driver_id).length
-    const cCount = botPicks.filter(p => p.constructor_id).length
-    let pickType = '', item = null
-    if (dCount < 3 && availableDrivers.length > 0) { pickType = 'driver'; item = availableDrivers[0] }
-    else if (cCount < 1 && availableConstructors.length > 0) { pickType = 'constructor'; item = availableConstructors[0] }
-    if (!item) { showToast("Bot stuck!", "error"); setLoading(false); return }
-    const col = pickType === 'driver' ? 'driver_id' : 'constructor_id'
-    await supabase.from('draft_picks').update({ [col]: item.id, picked_at: new Date() }).eq('pick_number', currentPick.pick_number)
-    setLoading(false)
-    refreshDraftState()
+
+    try {
+        console.log("🤖 Bot thinking...")
+
+        const { data: allPicks } = await supabase.from('draft_picks').select('driver_id, constructor_id, team_id')
+        const takenDriverIds = new Set(allPicks.map(p => p.driver_id).filter(Boolean))
+        const takenConstructorIds = new Set(allPicks.map(p => p.constructor_id).filter(Boolean))
+
+        const botRoster = allPicks.filter(p => p.team_id === currentPick.teams.id)
+        const dCount = botRoster.filter(p => p.driver_id).length
+        const hasConstructor = botRoster.some(p => p.constructor_id)
+
+        let type = 'driver'
+        if (dCount >= 2 && !hasConstructor) type = 'constructor'
+        else if (hasConstructor) type = 'driver'
+        else type = Math.random() > 0.4 ? 'driver' : 'constructor'
+
+        let choice = null
+        if (type === 'driver') {
+            choice = availableDrivers.find(d => !takenDriverIds.has(d.id))
+            if (!choice) { type = 'constructor'; choice = availableConstructors.find(c => !takenConstructorIds.has(c.id)) }
+        } else {
+             choice = availableConstructors.find(c => !takenConstructorIds.has(c.id))
+             if (!choice) { type = 'driver'; choice = availableDrivers.find(d => !takenDriverIds.has(d.id)) }
+        }
+
+        if (!choice) { showToast("Bot stuck!", "error"); return }
+
+        const col = type === 'driver' ? 'driver_id' : 'constructor_id'
+        const { error } = await supabase
+            .from('draft_picks')
+            .update({ [col]: choice.id, picked_at: new Date() })
+            .eq('pick_number', currentPick.pick_number)
+        
+        if (!error) {
+             // --- SYNC TO ROSTERS TABLE ---
+             await addToRoster(currentPick.teams.id, choice.id, type)
+             showToast("Bot made a selection", "success")
+             await refreshDraftState()
+        }
+
+    } catch (err) {
+        console.error("Bot Error", err)
+    } finally {
+        setLoading(false)
+        botProcessingRef.current = false
+    }
   }
 
   const isMyTurn = currentPick && myTeamId && currentPick.teams.id === myTeamId
-  const isBotTurn = currentPick && currentPick.teams.is_bot
 
   return (
     <div className="bg-neutral-900 text-white min-h-[calc(100vh-64px)] overflow-hidden">
@@ -182,9 +250,9 @@ const DraftRoom = () => {
         
         {/* Mobile Header */}
         <div className="flex-none bg-neutral-900 border-b border-neutral-800 p-4 safe-top">
-             <h1 className="text-xl font-black italic tracking-tighter flex items-center gap-2">
-                <span className="text-f1-red">F1</span> DRAFT ROOM
-             </h1>
+              <h1 className="text-xl font-black italic tracking-tighter flex items-center gap-2">
+                 <span className="text-f1-red">F1</span> DRAFT ROOM
+              </h1>
         </div>
 
         {/* Mobile Clock */}
@@ -201,7 +269,12 @@ const DraftRoom = () => {
                         {currentPick && <div className="font-bold text-lg">{currentPick.teams.owner_name}</div>}
                     </div>
                 </div>
-                {<button onClick={simulateBotPick} disabled={loading} className="bg-blue-600 text-xs px-2 py-1 rounded">Skip</button>}
+                {/* BOT SKIP BUTTON (Visible for everyone to force things along) */}
+                {currentPick && currentPick.teams.is_bot && (
+                    <button onClick={simulateBotPick} disabled={loading} className="bg-blue-600 text-xs px-3 py-2 rounded font-bold hover:bg-blue-500 transition">
+                         {loading ? 'Thinking...' : 'Force Bot'}
+                    </button>
+                )}
             </div>
         </div>
 
@@ -211,17 +284,16 @@ const DraftRoom = () => {
                 <>
                 <div className="mb-4">
                      <LiquidTabs 
-                         layoutId="market-filter-tabs" 
-                         options={[{id: 'drivers', label: 'Drivers'}, {id: 'constructors', label: 'Teams'}]}
-                         activeId={marketFilter}
-                         onChange={setMarketFilter}
-                         className="w-full justify-between bg-neutral-800 border-none"
-                     />
+                          layoutId="market-filter-tabs" 
+                          options={[{id: 'drivers', label: 'Drivers'}, {id: 'constructors', label: 'Teams'}]}
+                          activeId={marketFilter}
+                          onChange={setMarketFilter}
+                          className="w-full justify-between bg-neutral-800 border-none"
+                      />
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">
                     {marketFilter === 'drivers' ? availableDrivers.map(d => {
-                         // COLOR FIX: Use the 'team' column from drivers table
                          const teamName = d.team || 'Free Agent'
                          return (
                             <button key={d.id} disabled={!isMyTurn} onClick={() => triggerDraftModal(d, 'driver')} className={`flex items-center gap-3 p-3 rounded-xl border text-left relative overflow-hidden ${!isMyTurn ? 'opacity-60 border-neutral-800' : 'border-neutral-700/50'}`} style={{ background: getTeamGradient(teamName) }}>
@@ -290,9 +362,12 @@ const DraftRoom = () => {
                 <div className="text-3xl font-black italic truncate mb-2">{currentPick ? currentPick.teams.owner_name : 'Draft Complete'}</div>
                 {isMyTurn && <div className="text-green-400 font-bold animate-pulse">It's your turn! Make a selection.</div>}
 
-                <button onClick={simulateBotPick} className="mt-4 w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold text-sm transition">
-                    {loading ? 'Simulating Bot...' : 'Force Bot Pick 🤖'}
-                </button>
+                {/* BOT BUTTON FOR DESKTOP */}
+                {currentPick && (
+                    <button onClick={simulateBotPick} disabled={loading} className="mt-4 w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold text-sm transition">
+                        {loading ? 'Simulating Bot...' : 'Force Bot Pick 🤖'}
+                    </button>
+                )}
                 
             </div>
 
@@ -324,7 +399,7 @@ const DraftRoom = () => {
                              <div className="flex gap-1">
                                 {[0,1,2].map(i => (
                                     <div key={i} className={`flex-1 h-6 rounded flex items-center justify-center text-[10px] font-bold border ${team.drivers[i] ? 'bg-neutral-700 border-red-900 text-white' : 'bg-neutral-900 border-neutral-800 text-gray-600'}`}>
-                                        {team.drivers[i] ? getAbbr(team.drivers[i]) : '-'}
+                                         {team.drivers[i] ? getAbbr(team.drivers[i]) : '-'}
                                     </div>
                                 ))}
                                 <div className={`w-8 h-6 rounded flex items-center justify-center text-[10px] font-bold border ${team.constructor ? 'bg-blue-900/20 border-blue-800 text-blue-200' : 'bg-neutral-900 border-neutral-800 text-gray-600'}`}>
@@ -345,7 +420,6 @@ const DraftRoom = () => {
                 <h2 className="text-xl font-black italic mb-4 flex items-center gap-2"><span className="text-f1-red">🏎️</span> AVAILABLE DRIVERS</h2>
                 <div className="grid grid-cols-3 gap-3">
                     {availableDrivers.map(d => {
-                        // COLOR FIX: Use the 'team' column from drivers table
                         const teamName = d.team || 'Free Agent'
                         return (
                             <button 
@@ -399,11 +473,8 @@ const DraftRoom = () => {
                     ))}
                 </div>
             </div>
-
         </div>
-
       </div>
-
     </div>
   )
 }

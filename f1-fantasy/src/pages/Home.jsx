@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../App'
 import { getRaceColors, getTeamColors } from '../utils/colors'
 
+const CURRENT_SEASON = 2026
+
 const Home = () => {
   const [nextRace, setNextRace] = useState(null)
   const [schedule, setSchedule] = useState([])
@@ -17,11 +19,12 @@ const Home = () => {
   const fetchAllData = async () => {
     setLoading(true)
 
-    // --- 1. GET UPCOMING RACES ---
+    // --- 1. GET UPCOMING RACES (Current Season Only) ---
     const today = new Date().toISOString()
     const { data: raceData } = await supabase
       .from('races')
       .select('*')
+      .eq('year', CURRENT_SEASON) // <--- Force Current Season
       .gte('date', today)
       .order('date', { ascending: true })
       .limit(6)
@@ -31,59 +34,48 @@ const Home = () => {
         setSchedule(raceData.slice(1))
     }
 
-    // --- 2. GET STATS (From Views) ---
-    // We use total_real_points because our new Sync Script populates real world data
+    // --- 2. GET STATS FROM VIEWS (Current Season Only) ---
+    // We fetch BOTH point types here to use in different panels
     
     // A. Driver Stats
     const { data: driverStats } = await supabase
       .from('driver_stats_view')
-      .select('driver_id, total_real_points')
+      .select('driver_id, name, code, team, total_real_points, total_fantasy_points')
+      .eq('year', CURRENT_SEASON) // <--- Force Current Season
 
     // B. Constructor Stats
     const { data: constructorStats } = await supabase
       .from('constructor_stats_view')
-      .select('constructor_id, total_real_points')
+      .select('constructor_id, name, total_real_points, total_fantasy_points')
+      .eq('year', CURRENT_SEASON) // <--- Force Current Season
 
-    // --- 3. GET MAPPING INFO (Names & Colors) ---
-    const { data: allDrivers } = await supabase
-      .from('drivers')
-      .select('id, name, code, constructors (name)')
+    // --- 3. CALCULATE LEAGUE STANDINGS (Fantasy Points) ---
+    const { data: teams } = await supabase.from('teams').select('id, team_name, owner_name')
     
-    const { data: allConstructors } = await supabase
-      .from('constructors')
-      .select('id, name')
+    // We use the 'rosters' table now as the source of truth
+    const { data: rosters } = await supabase.from('rosters').select('*')
 
-    // --- 4. CALCULATE LEAGUE STANDINGS ---
-    const { data: teams } = await supabase
-      .from('teams')
-      .select('id, team_name, owner_name')
-    
-    const { data: picks } = await supabase
-      .from('draft_picks')
-      .select('team_id, driver_id, constructor_id')
-
-    if (teams && picks && driverStats && constructorStats) {
+    if (teams && rosters && driverStats && constructorStats) {
         const calculatedStandings = teams.map(team => {
-            // Find picks for this team
-            const teamPicks = picks.filter(p => p.team_id === team.id)
-            
-            let totalPoints = 0
-            
-            teamPicks.forEach(pick => {
-                // Driver Points
-                if (pick.driver_id) {
-                    const stat = driverStats.find(s => s.driver_id === pick.driver_id)
-                    // We use real points as the base for fantasy scoring
-                    if (stat) totalPoints += (stat.total_real_points || 0)
-                }
-                // Constructor Points
-                if (pick.constructor_id) {
-                    const stat = constructorStats.find(s => s.constructor_id === pick.constructor_id)
-                    if (stat) totalPoints += (stat.total_real_points || 0)
-                }
-            })
+            const roster = rosters.find(r => r.team_id === team.id)
+            let totalFantasyPoints = 0
 
-            return { ...team, total_points: totalPoints }
+            if (roster) {
+                // Sum Drivers (Fantasy Points)
+                const dIds = [roster.driver_1_id, roster.driver_2_id, roster.driver_3_id].filter(Boolean)
+                dIds.forEach(id => {
+                    const stat = driverStats.find(s => s.driver_id === id)
+                    if (stat) totalFantasyPoints += (stat.total_fantasy_points || 0)
+                })
+
+                // Sum Constructor (Fantasy Points)
+                if (roster.constructor_id) {
+                    const stat = constructorStats.find(s => s.constructor_id === roster.constructor_id)
+                    if (stat) totalFantasyPoints += (stat.total_fantasy_points || 0)
+                }
+            }
+
+            return { ...team, total_points: totalFantasyPoints }
         })
 
         // Sort by Points (High to Low)
@@ -91,36 +83,31 @@ const Home = () => {
         setLeagueStandings(calculatedStandings)
     }
 
-    // --- 5. FORMAT REAL WORLD PANELS ---
+    // --- 4. FORMAT REAL WORLD PANELS (Real Points) ---
     
     // WDC: Driver Real Points
-    if (driverStats && allDrivers) {
+    if (driverStats) {
         const formattedWdc = driverStats
-            .map(stat => {
-                const driver = allDrivers.find(d => d.id === stat.driver_id)
-                return {
-                    id: stat.driver_id,
-                    name: driver?.name || 'Unknown',
-                    team: driver?.constructors?.name,
-                    points: stat.total_real_points
-                }
-            })
+            .map(stat => ({
+                id: stat.driver_id,
+                name: stat.name,
+                code: stat.code,
+                team: stat.team,
+                points: stat.total_real_points // <--- Real Points for F1 Standings
+            }))
             .sort((a,b) => b.points - a.points)
             .slice(0, 10)
         setWdc(formattedWdc)
     }
 
     // WCC: Constructor Real Points
-    if (constructorStats && allConstructors) {
+    if (constructorStats) {
         const formattedWcc = constructorStats
-            .map(stat => {
-                const constructor = allConstructors.find(c => c.id === stat.constructor_id)
-                return {
-                    id: stat.constructor_id,
-                    name: constructor?.name || 'Unknown',
-                    points: stat.total_real_points
-                }
-            })
+            .map(stat => ({
+                id: stat.constructor_id,
+                name: stat.name,
+                points: stat.total_real_points // <--- Real Points for F1 Standings
+            }))
             .sort((a,b) => b.points - a.points)
             .slice(0, 10)
         setWcc(formattedWcc)
@@ -133,7 +120,7 @@ const Home = () => {
     return `linear-gradient(${angle}, ${colors.primary} 0%, ${colors.secondary} 100%)`
   }
 
-  if (loading) return <div className="min-h-screen bg-neutral-900 text-white flex items-center justify-center animate-pulse">Loading Dashboard...</div>
+  if (loading) return <div className="min-h-screen bg-neutral-900 text-white flex items-center justify-center animate-pulse">Loading Season {CURRENT_SEASON}...</div>
 
   // Podium Logic
   const first = leagueStandings[0]
@@ -153,14 +140,14 @@ const Home = () => {
 
             <div className="max-w-7xl mx-auto relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
                 <div className="text-center md:text-left">
-                    <div className="text-sm font-bold text-red-500 tracking-widest uppercase mb-2">Next Grand Prix</div>
+                    <div className="text-sm font-bold text-white/80 tracking-widest uppercase mb-2">Next Grand Prix</div>
                     <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter text-white drop-shadow-lg">{nextRace.name}</h1>
-                    <p className="text-xl text-gray-300 mt-2 font-semibold">{nextRace.circuit}</p>
+                    <p className="text-xl text-gray-200 mt-2 font-semibold">{nextRace.circuit}</p>
                 </div>
                 
                 <div className="text-center md:text-right">
                     <div className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-lg">
-                        <div className="text-xs text-gray-400 uppercase font-bold mb-1">Race Day</div>
+                        <div className="text-xs text-gray-200 uppercase font-bold mb-1">Race Day</div>
                         <div className="text-2xl font-mono font-bold">
                             {new Date(nextRace.date).toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' })}
                         </div>
@@ -174,14 +161,13 @@ const Home = () => {
       <div className="max-w-7xl mx-auto px-4 md:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
 
         {/* --- SECTION 1: UPCOMING (Left) --- */}
-        {/* Mobile: Order 3 (Bottom) | Desktop: Order 1 (Left) */}
         <div className="lg:col-span-1 space-y-4 order-3 lg:order-1">
           <h2 className="text-xl font-bold border-b border-neutral-700 pb-2 flex items-center gap-2">
             <span>📅</span> Schedule
           </h2>
           
           {schedule.length === 0 ? (
-            <div className="text-gray-500 italic text-sm">Check back later for more races.</div>
+            <div className="text-gray-500 italic text-sm">No more races this season.</div>
           ) : (
             <div className="space-y-4">
               {schedule.map((race) => {
@@ -207,7 +193,6 @@ const Home = () => {
         </div>
 
         {/* --- SECTION 2: LEAGUE STANDINGS (Middle) --- */}
-        {/* Mobile: Order 1 (Top) | Desktop: Order 2 (Middle) */}
         <div className="lg:col-span-2 order-1 lg:order-2">
           <h2 className="text-xl font-bold border-b border-neutral-700 pb-2 flex items-center gap-2 mb-6">
             <span>🏆</span> League Standings
@@ -273,7 +258,6 @@ const Home = () => {
         </div>
 
         {/* --- SECTION 3: REAL WORLD STATS (Right) --- */}
-        {/* Mobile: Order 2 (Middle) | Desktop: Order 3 (Right) */}
         <div className="lg:col-span-1 space-y-8 order-2 lg:order-3">
           
           {/* WDC PANEL */}

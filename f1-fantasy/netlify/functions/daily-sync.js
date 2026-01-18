@@ -6,8 +6,19 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// --- CONFIGURATION ---
+// Estimated durations to calculate "Session End" times
+const DURATIONS = {
+    qualifying: 90, // Minutes (1h 30m)
+    sprint: 90,     // Minutes (1h 30m to be safe)
+    race: 180,      // Minutes (3h buffer for red flags/ceremonies)
+}
+
+// How long after a session ends should we keep trying to sync? 
+// (e.g. if session ends at 4:00, we sync at 5:00 and 6:00, then stop)
+const SYNC_WINDOW_MINUTES = 180 
+
 // --- HELPER: AUTO-PAGINATION ---
-// Fetches all pages of data (handling limits > 100)
 const fetchAllPages = async (baseUrl) => {
   let allResults = []
   let offset = 0
@@ -18,14 +29,11 @@ const fetchAllPages = async (baseUrl) => {
     const separator = baseUrl.includes('?') ? '&' : '?'
     const url = `${baseUrl}${separator}limit=${limit}&offset=${offset}`
     
-    // Safety Delay: 200ms to avoid API rate limits
+    // Safety Delay
     await new Promise(r => setTimeout(r, 200))
 
     const resp = await fetch(url)
-    if (!resp.ok) {
-        console.error(`❌ API Error ${resp.status} at ${url}`)
-        break;
-    }
+    if (!resp.ok) break;
 
     const data = await resp.json()
     if (!data.MRData || !data.MRData.RaceTable) break;
@@ -36,28 +44,106 @@ const fetchAllPages = async (baseUrl) => {
     total = parseInt(data.MRData.total)
     offset += limit
     
-    if (offset > 1000) break; // Hard stop safety
+    if (offset > 1000) break; 
   } while (offset < total)
 
   return allResults
 }
 
+// --- MAIN LOGIC ---
 const syncLogic = async (event) => {
   try {
-    // We strictly define the years we want to maintain
-    const yearsToSync = [2025, 2026]
-    console.log(`🚀 Starting Multi-Year Sync for: ${yearsToSync.join(', ')}`)
+    const now = new Date()
+    console.log(`⏰ Hourly Trigger: ${now.toISOString()}`)
 
-    for (const year of yearsToSync) {
-      await syncSeasonComplete(year)
+    const yearsToSync = [2025, 2026]
+    let shouldRunSync = false
+
+    // 1. MIDNIGHT SAFETY NET (Runs once a day regardless of races)
+    // Checks if current hour is 00 UTC (or your preferred time)
+    if (now.getUTCHours() === 0) {
+        console.log("🌙 Midnight Safety Sync triggered.")
+        shouldRunSync = true
     }
-    return { statusCode: 200 }
+
+    // 2. INTELLIGENT EVENT CHECK
+    // If it's not midnight, we only run if a race event recently finished.
+    if (!shouldRunSync) {
+        shouldRunSync = await checkIfSessionJustFinished(yearsToSync, now)
+    }
+
+    if (shouldRunSync) {
+        for (const year of yearsToSync) {
+            await syncSeasonComplete(year)
+        }
+        return { statusCode: 200, body: "Sync Executed" }
+    } else {
+        console.log("💤 No active sessions or midnight trigger. Skipping sync.")
+        return { statusCode: 200, body: "Skipped" }
+    }
+
   } catch (error) {
     console.error("❌ Critical Sync Failure:", error)
     return { statusCode: 500 }
   }
 }
 
+// --- CHECKER FUNCTION ---
+const checkIfSessionJustFinished = async (years, now) => {
+    for (const year of years) {
+        // Fetch just the schedule to check times
+        const resp = await fetch(`http://api.jolpi.ca/ergast/f1/${year}.json`)
+        const data = await resp.json()
+        const races = data.MRData?.RaceTable?.Races || []
+
+        for (const race of races) {
+            // We only care about races happening within +/- 2 days of NOW
+            const raceDate = new Date(`${race.date}T${race.time}`)
+            const diffDays = Math.abs((now - raceDate) / (1000 * 60 * 60 * 24))
+            
+            if (diffDays > 3) continue; // Skip irrelevant races
+
+            console.log(`🔎 Checking timeline for ${race.raceName}...`)
+
+            // Helper to check a specific session
+            const checkSession = (name, dateStr, timeStr, durationMins) => {
+                if (!dateStr || !timeStr) return false
+                
+                // Construct Date Object (UTC)
+                const sessionStart = new Date(`${dateStr}T${timeStr}`)
+                const sessionEnd = new Date(sessionStart.getTime() + durationMins * 60000)
+                
+                // Check if NOW is within the "Sync Window" (e.g. 1-3 hours after finish)
+                // We add 1 hour buffer before starting to ensure API has updated
+                const startSyncTime = new Date(sessionEnd.getTime() + 60 * 60000) // 1 hr after finish
+                const stopSyncTime = new Date(sessionEnd.getTime() + SYNC_WINDOW_MINUTES * 60000)
+
+                if (now >= startSyncTime && now <= stopSyncTime) {
+                    console.log(`   🚀 TRIGGER: ${name} finished recently (End: ${sessionEnd.toISOString()})`)
+                    return true
+                }
+                return false
+            }
+
+            // Check all relevant sessions
+            // 1. The Grand Prix
+            if (checkSession('Race', race.date, race.time, DURATIONS.race)) return true
+            
+            // 2. Qualifying
+            if (race.Qualifying) {
+                if (checkSession('Qualifying', race.Qualifying.date, race.Qualifying.time, DURATIONS.qualifying)) return true
+            }
+
+            // 3. Sprint
+            if (race.Sprint) {
+                if (checkSession('Sprint', race.Sprint.date, race.Sprint.time, DURATIONS.sprint)) return true
+            }
+        }
+    }
+    return false
+}
+
+// --- SYNC FUNCTION (Existing Logic) ---
 const syncSeasonComplete = async (year) => {
   console.log(`\n📅 Processing Season ${year}...`)
 
@@ -66,10 +152,7 @@ const syncSeasonComplete = async (year) => {
   const scheduleData = await scheduleResp.json()
   const apiRaces = scheduleData.MRData?.RaceTable?.Races || []
 
-  if (apiRaces.length === 0) {
-    console.log(`   -> No schedule found for ${year}.`)
-    return
-  }
+  if (apiRaces.length === 0) return
 
   const racesPayload = apiRaces.map(r => ({
     year: parseInt(r.season),
@@ -89,7 +172,6 @@ const syncSeasonComplete = async (year) => {
   if (raceErr) console.error(`   -> Race Sync Error:`, raceErr)
   
   // 2. FETCH EXISTING RACES (Map Round -> ID)
-  // We need to map the API "Round 1" to your Database UUID
   const { data: dbRaces } = await supabaseAdmin
     .from('races')
     .select('id, round')
@@ -98,7 +180,7 @@ const syncSeasonComplete = async (year) => {
   if (!dbRaces) return
   const raceMap = {}; dbRaces.forEach(r => { raceMap[r.round] = r.id })
 
-  // 3. FETCH ALL RESULTS (Sequentially)
+  // 3. FETCH ALL RESULTS
   console.log("   -> Fetching full result lists...")
   const raceRaces = await fetchAllPages(`http://api.jolpi.ca/ergast/f1/${year}/results.json`)
   const sprintRaces = await fetchAllPages(`http://api.jolpi.ca/ergast/f1/${year}/sprint.json`)
@@ -109,7 +191,6 @@ const syncSeasonComplete = async (year) => {
   const constructorsToUpsert = new Map()
   const resultsPayload = []
 
-  // Helper: Extract Qualifying Time vs Race Time
   const getBestTime = (row, sessionType) => {
       if (sessionType === 'qualifying') {
          return row.Q3 || row.Q2 || row.Q1 || null
@@ -124,7 +205,6 @@ const syncSeasonComplete = async (year) => {
       const raceId = raceMap[parseInt(race.round)]
       if (!raceId) continue
 
-      // Explicitly select the correct list based on session type
       let list = []
       if (sessionType === 'race') list = race.Results || []
       else if (sessionType === 'sprint') list = race.SprintResults || []
@@ -133,12 +213,10 @@ const syncSeasonComplete = async (year) => {
       for (const row of list) {
         if (!row.Driver) continue; 
         
-        // --- DRIVER ---
         const dCode = row.Driver.code || row.Driver.driverId.substring(0,3).toUpperCase()
         
-        // We use .set() to ensure we capture the latest team info for this year
         driversToUpsert.set(dCode, {
-            year: year, // <--- CRITICAL: Links driver to specific season
+            year: year,
             name: `${row.Driver.givenName} ${row.Driver.familyName}`,
             number: row.number ? parseInt(row.number) : null,
             nationality: row.Driver.nationality,
@@ -146,17 +224,15 @@ const syncSeasonComplete = async (year) => {
             team: row.Constructor?.name 
         })
         
-        // --- CONSTRUCTOR ---
         const cName = row.Constructor?.name
         if (cName) {
             constructorsToUpsert.set(cName, { 
-                year: year, // <--- CRITICAL: Links team to specific season
+                year: year,
                 name: cName, 
                 nationality: row.Constructor.nationality 
             })
         }
         
-        // --- RESULT ---
         resultsPayload.push({
             race_id: raceId,
             driver_code: dCode,
@@ -176,33 +252,16 @@ const syncSeasonComplete = async (year) => {
   processList(sprintRaces, 'sprint')
   processList(qualiRaces, 'qualifying')
 
-  // 5. UPSERT DRIVERS & CONSTRUCTORS
-  // Note: We changed onConflict to include 'year'
   if (driversToUpsert.size > 0) {
-      const { error } = await supabaseAdmin
-        .from('drivers')
-        .upsert(Array.from(driversToUpsert.values()), { onConflict: 'year, code' })
-      if (error) console.error("   ❌ Driver Sync Error:", error)
+      await supabaseAdmin.from('drivers').upsert(Array.from(driversToUpsert.values()), { onConflict: 'year, code' })
   }
 
   if (constructorsToUpsert.size > 0) {
-      const { error } = await supabaseAdmin
-        .from('constructors')
-        .upsert(Array.from(constructorsToUpsert.values()), { onConflict: 'year, name' })
-      if (error) console.error("   ❌ Constructor Sync Error:", error)
+      await supabaseAdmin.from('constructors').upsert(Array.from(constructorsToUpsert.values()), { onConflict: 'year, name' })
   }
 
-  // 6. MAP IDS (Year-Filtered) & UPSERT RESULTS
-  // We must fetch IDs strictly for the current YEAR to avoid linking to 2025 entities in 2026
-  const { data: allDrivers } = await supabaseAdmin
-    .from('drivers')
-    .select('id, code')
-    .eq('year', year) 
-
-  const { data: allConstructors } = await supabaseAdmin
-    .from('constructors')
-    .select('id, name')
-    .eq('year', year)
+  const { data: allDrivers } = await supabaseAdmin.from('drivers').select('id, code').eq('year', year) 
+  const { data: allConstructors } = await supabaseAdmin.from('constructors').select('id, name').eq('year', year)
 
   const dMap = {}; allDrivers?.forEach(d => dMap[d.code] = d.id)
   const cMap = {}; allConstructors?.forEach(c => cMap[c.name] = c.id)
@@ -212,7 +271,6 @@ const syncSeasonComplete = async (year) => {
       const dId = dMap[r.driver_code]
       const cId = cMap[r.constructor_name]
       
-      // Only add result if we successfully found both IDs for this year
       if (dId && cId) {
           finalResults.push({
               race_id: r.race_id,
@@ -232,12 +290,41 @@ const syncSeasonComplete = async (year) => {
       const { error } = await supabaseAdmin
         .from('race_results')
         .upsert(finalResults, { onConflict: 'race_id, driver_id, session_type' })
-      
       if (error) console.error("   ❌ Result Write Error:", error)
-      else console.log(`   -> ✅ Successfully synced ${finalResults.length} TOTAL results.`)
-  } else {
-      console.log("   -> No results to sync (Season might not have started).")
+  }
+
+  // 7. SYNC SAFETY CAR DATA (OpenF1)
+  console.log("   -> 🚨 Syncing Safety Car data from OpenF1...")
+
+  for (const race of racesPayload) {
+      // Only check past races (with 3 day lookback to avoid fetching ancient history needlessly)
+      const raceDate = new Date(race.date)
+      const daysSince = (new Date() - raceDate) / (1000 * 60 * 60 * 24)
+      if (raceDate > new Date() || daysSince > 5) continue;
+
+      try {
+          const sessionResp = await fetch(`https://api.openf1.org/v1/sessions?date_start=${race.date}&date_end=${race.date}&session_name=Race`)
+          const sessions = await sessionResp.json()
+
+          if (sessions && sessions.length > 0) {
+              const sessionKey = sessions[0].session_key
+              const scResp = await fetch(`https://api.openf1.org/v1/safety_cars?session_key=${sessionKey}`)
+              const scData = await scResp.json()
+
+              const scCount = scData.filter(x => x.type === 'SC').length
+              const vscCount = scData.filter(x => x.type === 'VSC').length
+              const raceUUID = raceMap[race.round]
+
+              if (raceUUID) {
+                  await supabaseAdmin.from('races').update({ safety_cars: scCount, virtual_safety_cars: vscCount }).eq('id', raceUUID)
+              }
+          }
+          await new Promise(r => setTimeout(r, 200))
+      } catch (err) {
+          console.error(`      ⚠️ OpenF1 sync failed for ${race.name}:`, err.message)
+      }
   }
 }
 
-export const handler = schedule('0 0 * * *', syncLogic)
+// RUN EVERY HOUR ('0 * * * *')
+export const handler = schedule('0 * * * *', syncLogic)

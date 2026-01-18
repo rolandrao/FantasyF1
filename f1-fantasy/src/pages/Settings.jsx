@@ -22,7 +22,7 @@ const Settings = () => {
   const [showDraftModal, setShowDraftModal] = useState(false)
   const [adminLoading, setAdminLoading] = useState(false)
   
-  // NEW: Track which action we are performing
+  // Track which action we are performing
   const [draftMode, setDraftMode] = useState('NEW_ERA') // 'NEW_ERA' or 'DEBUG_WIPE'
 
   useEffect(() => {
@@ -95,7 +95,7 @@ const Settings = () => {
     setAdminLoading(false)
   }
 
-  // --- THE MASTER EXECUTION FUNCTION ---
+  // --- THE MASTER EXECUTION FUNCTION (UPDATED) ---
   const executeDraftLogic = async () => {
     // Safety check based on mode
     const warningMsg = draftMode === 'NEW_ERA' 
@@ -114,6 +114,7 @@ const Settings = () => {
 
             const closeDate = new Date().toISOString().split('T')[0]
 
+            // We grab current picks to archive them
             const { data: currentPicks } = await supabase.from('draft_picks').select('*')
             const archivePayload = currentPicks
                 .filter(p => p.driver_id || p.constructor_id)
@@ -136,12 +137,18 @@ const Settings = () => {
         }
 
         // --- SHARED LOGIC: WIPE & REGENERATE PICKS ---
-        // Whether archiving or debugging, we always wipe the active board and generate a new snake draft
         
-        // 1. Wipe Draft Board
+        // 1. NEW: Clear Rosters & Chips first (Child Tables)
+        // We use .neq with a dummy UUID to simulate "delete all" safely
+        const dummyUUID = '00000000-0000-0000-0000-000000000000'
+        
+        await supabase.from('rosters').delete().neq('team_id', dummyUUID)
+        await supabase.from('team_chips').delete().neq('id', dummyUUID) // Reset chips too
+        
+        // 2. Wipe Draft Board
         await supabase.from('draft_picks').delete().gt('pick_number', 0) 
         
-        // 2. Generate New Snake Draft
+        // 3. Generate New Snake Draft
         const newPicks = []
         let pickNum = 1
         const rounds = 4 
@@ -155,7 +162,7 @@ const Settings = () => {
         }
         await supabase.from('draft_picks').insert(newPicks)
 
-        alert(draftMode === 'NEW_ERA' ? "✅ Era Archived & Draft Started!" : "✅ Debug Wipe Complete. Draft Restarted.")
+        alert(draftMode === 'NEW_ERA' ? "✅ Era Archived & Draft Started!" : "✅ Debug Wipe Complete. Rosters Cleared.")
         setShowDraftModal(false)
 
     } catch (error) {
@@ -244,7 +251,7 @@ const Settings = () => {
                         <div>
                             <h3 className="font-bold text-lg text-orange-400">Debug Clear Teams</h3>
                             <p className="text-xs text-gray-400 max-w-sm">
-                                <span className="text-orange-400 font-bold">WARNING:</span> Wipes current rosters (No Archive). Resets draft board for the *current* era.
+                                <span className="text-orange-400 font-bold">WARNING:</span> Wipes Rosters & Picks (No Archive). Resets draft board for the *current* era.
                             </p>
                         </div>
                         <button 

@@ -4,3 +4,14 @@ body {
   background-color: #111;
   color: white;
 }
+
+/* src/index.css */
+@keyframes scan {
+  0% { top: 0%; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.animate-scan {
+  animation: scan 3s linear infinite;
+}
