@@ -7,15 +7,12 @@ const supabaseAdmin = createClient(
 )
 
 // --- CONFIGURATION ---
-// Estimated durations to calculate "Session End" times
 const DURATIONS = {
-    qualifying: 90, // Minutes (1h 30m)
-    sprint: 90,     // Minutes (1h 30m to be safe)
-    race: 180,      // Minutes (3h buffer for red flags/ceremonies)
+    qualifying: 90, 
+    sprint: 90,     
+    race: 180,      
 }
 
-// How long after a session ends should we keep trying to sync? 
-// (e.g. if session ends at 4:00, we sync at 5:00 and 6:00, then stop)
 const SYNC_WINDOW_MINUTES = 180 
 
 // --- HELPER: AUTO-PAGINATION ---
@@ -29,7 +26,6 @@ const fetchAllPages = async (baseUrl) => {
     const separator = baseUrl.includes('?') ? '&' : '?'
     const url = `${baseUrl}${separator}limit=${limit}&offset=${offset}`
     
-    // Safety Delay
     await new Promise(r => setTimeout(r, 200))
 
     const resp = await fetch(url)
@@ -59,15 +55,13 @@ const syncLogic = async (event) => {
     const yearsToSync = [2025, 2026]
     let shouldRunSync = false
 
-    // 1. MIDNIGHT SAFETY NET (Runs once a day regardless of races)
-    // Checks if current hour is 00 UTC (or your preferred time)
+    // 1. MIDNIGHT SAFETY NET
     if (now.getUTCHours() === 0) {
         console.log("🌙 Midnight Safety Sync triggered.")
         shouldRunSync = true
     }
 
     // 2. INTELLIGENT EVENT CHECK
-    // If it's not midnight, we only run if a race event recently finished.
     if (!shouldRunSync) {
         shouldRunSync = await checkIfSessionJustFinished(yearsToSync, now)
     }
@@ -91,31 +85,25 @@ const syncLogic = async (event) => {
 // --- CHECKER FUNCTION ---
 const checkIfSessionJustFinished = async (years, now) => {
     for (const year of years) {
-        // Fetch just the schedule to check times
         const resp = await fetch(`http://api.jolpi.ca/ergast/f1/${year}.json`)
         const data = await resp.json()
         const races = data.MRData?.RaceTable?.Races || []
 
         for (const race of races) {
-            // We only care about races happening within +/- 2 days of NOW
             const raceDate = new Date(`${race.date}T${race.time}`)
             const diffDays = Math.abs((now - raceDate) / (1000 * 60 * 60 * 24))
             
-            if (diffDays > 3) continue; // Skip irrelevant races
+            if (diffDays > 3) continue; 
 
             console.log(`🔎 Checking timeline for ${race.raceName}...`)
 
-            // Helper to check a specific session
             const checkSession = (name, dateStr, timeStr, durationMins) => {
                 if (!dateStr || !timeStr) return false
                 
-                // Construct Date Object (UTC)
                 const sessionStart = new Date(`${dateStr}T${timeStr}`)
                 const sessionEnd = new Date(sessionStart.getTime() + durationMins * 60000)
                 
-                // Check if NOW is within the "Sync Window" (e.g. 1-3 hours after finish)
-                // We add 1 hour buffer before starting to ensure API has updated
-                const startSyncTime = new Date(sessionEnd.getTime() + 60 * 60000) // 1 hr after finish
+                const startSyncTime = new Date(sessionEnd.getTime() + 60 * 60000) 
                 const stopSyncTime = new Date(sessionEnd.getTime() + SYNC_WINDOW_MINUTES * 60000)
 
                 if (now >= startSyncTime && now <= stopSyncTime) {
@@ -125,16 +113,12 @@ const checkIfSessionJustFinished = async (years, now) => {
                 return false
             }
 
-            // Check all relevant sessions
-            // 1. The Grand Prix
             if (checkSession('Race', race.date, race.time, DURATIONS.race)) return true
             
-            // 2. Qualifying
             if (race.Qualifying) {
                 if (checkSession('Qualifying', race.Qualifying.date, race.Qualifying.time, DURATIONS.qualifying)) return true
             }
 
-            // 3. Sprint
             if (race.Sprint) {
                 if (checkSession('Sprint', race.Sprint.date, race.Sprint.time, DURATIONS.sprint)) return true
             }
@@ -143,7 +127,7 @@ const checkIfSessionJustFinished = async (years, now) => {
     return false
 }
 
-// --- SYNC FUNCTION (Existing Logic) ---
+// --- SYNC FUNCTION ---
 const syncSeasonComplete = async (year) => {
   console.log(`\n📅 Processing Season ${year}...`)
 
@@ -171,7 +155,7 @@ const syncSeasonComplete = async (year) => {
   
   if (raceErr) console.error(`   -> Race Sync Error:`, raceErr)
   
-  // 2. FETCH EXISTING RACES (Map Round -> ID)
+  // 2. FETCH EXISTING RACES
   const { data: dbRaces } = await supabaseAdmin
     .from('races')
     .select('id, round')
@@ -240,6 +224,7 @@ const syncSeasonComplete = async (year) => {
             session_type: sessionType,
             position: parseInt(row.position),
             points: parseFloat(row.points || 0),
+            real_points: parseFloat(row.points || 0), // <-- FIX APPLIED HERE
             grid: parseInt(row.grid || 0),
             status: row.status || 'Finished',
             fastest_lap_time: getBestTime(row, sessionType)
@@ -279,6 +264,7 @@ const syncSeasonComplete = async (year) => {
               session_type: r.session_type,
               position: r.position,
               points: r.points,
+              real_points: r.real_points, // <-- FIX APPLIED HERE
               grid: r.grid,
               status: r.status,
               fastest_lap_time: r.fastest_lap_time
@@ -297,7 +283,6 @@ const syncSeasonComplete = async (year) => {
   console.log("   -> 🚨 Syncing Safety Car data from OpenF1...")
 
   for (const race of racesPayload) {
-      // Only check past races (with 3 day lookback to avoid fetching ancient history needlessly)
       const raceDate = new Date(race.date)
       const daysSince = (new Date() - raceDate) / (1000 * 60 * 60 * 24)
       if (raceDate > new Date() || daysSince > 5) continue;
@@ -326,5 +311,4 @@ const syncSeasonComplete = async (year) => {
   }
 }
 
-// RUN EVERY HOUR ('0 * * * *')
 export const handler = schedule('0 * * * *', syncLogic)
