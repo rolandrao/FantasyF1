@@ -66,12 +66,6 @@ const syncLogic = async (event) => {
         shouldRunSync = await checkIfSessionJustFinished(yearsToSync, now)
     }
 
-    // =================================================================
-    // ⚠️ TEMPORARY FORCE SYNC (DELETE THIS BEFORE MERGING TO MAIN) ⚠️
-    // =================================================================
-    shouldRunSync = true;
-    // =================================================================
-
     if (shouldRunSync) {
         for (const year of yearsToSync) {
             await syncSeasonComplete(year)
