@@ -66,7 +66,11 @@ const syncLogic = async (event) => {
         shouldRunSync = await checkIfSessionJustFinished(yearsToSync, now)
     }
 
+    // =================================================================
+    // ⚠️ TEMPORARY FORCE SYNC (DELETE THIS BEFORE MERGING TO MAIN) ⚠️
+    // =================================================================
     shouldRunSync = true;
+    // =================================================================
 
     if (shouldRunSync) {
         for (const year of yearsToSync) {
@@ -225,8 +229,7 @@ const syncSeasonComplete = async (year) => {
             constructor_name: cName,
             session_type: sessionType,
             position: parseInt(row.position),
-            points: parseFloat(row.points || 0),
-            real_points: parseFloat(row.points || 0), // <-- FIX APPLIED HERE
+            real_points: parseFloat(row.points || 0), // <-- WRITES DIRECTLY TO CORRECT COLUMN
             grid: parseInt(row.grid || 0),
             status: row.status || 'Finished',
             fastest_lap_time: getBestTime(row, sessionType)
@@ -265,8 +268,7 @@ const syncSeasonComplete = async (year) => {
               constructor_id: cId,
               session_type: r.session_type,
               position: r.position,
-              points: r.points,
-              real_points: r.real_points, // <-- FIX APPLIED HERE
+              real_points: r.real_points, // <-- PUSHES CORRECT COLUMN TO DATABASE
               grid: r.grid,
               status: r.status,
               fastest_lap_time: r.fastest_lap_time
