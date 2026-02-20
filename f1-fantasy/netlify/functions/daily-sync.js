@@ -66,6 +66,8 @@ const syncLogic = async (event) => {
         shouldRunSync = await checkIfSessionJustFinished(yearsToSync, now)
     }
 
+    shouldRunSync = true;
+
     if (shouldRunSync) {
         for (const year of yearsToSync) {
             await syncSeasonComplete(year)
