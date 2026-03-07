@@ -49,22 +49,30 @@ const League = () => {
     const today = new Date().toISOString()
     const nextRace = races.find(r => r.date >= today) || races[races.length - 1]
 
+    // --- HELPER MATH FUNCTIONS FOR INDIVIDUAL SCORES ---
+    const getDriverPoints = (driverId) => {
+        return results.filter(r => r.driver_id === driverId).reduce((sum, r) => sum + (r.fantasy_points || 0), 0)
+    }
+    const getConstructorPoints = (constructorId) => {
+        return results.filter(r => r.constructor_id === constructorId).reduce((sum, r) => sum + (r.fantasy_points || 0), 0)
+    }
+
     // --- MERGE DATA ---
     const merged = teams.map(t => {
       // A. Points
       const tPointsRow = pointTotals.find(p => p.team_id === t.id)
       const tPoints = tPointsRow ? tPointsRow.total_points : 0
 
-      // B. Build Base Roster
+      // B. Build Base Roster (NOW WITH POINTS ATTACHED)
       const tRoster = rosters.find(r => r.team_id === t.id)
 
       let drivers = []
-      if (tRoster?.driver_1) drivers.push({ ...tRoster.driver_1, pick_number: getPickNumber(picks, tRoster.driver_1.id) })
-      if (tRoster?.driver_2) drivers.push({ ...tRoster.driver_2, pick_number: getPickNumber(picks, tRoster.driver_2.id) })
-      if (tRoster?.driver_3) drivers.push({ ...tRoster.driver_3, pick_number: getPickNumber(picks, tRoster.driver_3.id) })
+      if (tRoster?.driver_1) drivers.push({ ...tRoster.driver_1, pick_number: getPickNumber(picks, tRoster.driver_1.id), points: getDriverPoints(tRoster.driver_1.id) })
+      if (tRoster?.driver_2) drivers.push({ ...tRoster.driver_2, pick_number: getPickNumber(picks, tRoster.driver_2.id), points: getDriverPoints(tRoster.driver_2.id) })
+      if (tRoster?.driver_3) drivers.push({ ...tRoster.driver_3, pick_number: getPickNumber(picks, tRoster.driver_3.id), points: getDriverPoints(tRoster.driver_3.id) })
 
       const constructor = tRoster?.constructor 
-        ? { ...tRoster.constructor, pick_number: getPickNumber(picks, null, tRoster.constructor.id) } 
+        ? { ...tRoster.constructor, pick_number: getPickNumber(picks, null, tRoster.constructor.id), points: getConstructorPoints(tRoster.constructor.id) } 
         : null
 
       // C. APPLY STEAL LOGIC (VISUAL SWAP)
@@ -84,6 +92,7 @@ const League = () => {
                       drivers[targetIndex] = {
                           ...stolenDriverData,
                           pick_number: drivers[targetIndex].pick_number,
+                          points: getDriverPoints(stolenDriverData.id), // <-- ADDED POINTS HERE TOO
                           isStolen: true,
                           stolenFrom: victimTeamName
                       }
@@ -111,6 +120,7 @@ const League = () => {
                       drivers[stolenIndex] = {
                           ...forcedDriverData,
                           pick_number: drivers[stolenIndex].pick_number,
+                          points: getDriverPoints(forcedDriverData.id), // <-- ADDED POINTS HERE TOO
                           isSwapped: true,
                           swappedFrom: attackerName
                       }

@@ -16,15 +16,27 @@ export const useTeamData = () => {
         return found ? found.pick_number : '-'
     }
 
-    const fetchMyTeam = useCallback(async () => {
+// Update fetchMyTeam to accept an optional teamId
+    const fetchMyTeam = useCallback(async (overrideTeamId = null) => {
         setLoading(true)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setLoading(false); return }
+        let myTeam = null;
 
-        // 1. Fetch Team
-        const { data: myTeam } = await supabase.from('teams').select('*').eq('user_id', user.id).maybeSingle()
+        if (overrideTeamId) {
+            // ADMIN OVERRIDE: Fetch the requested team
+            const { data } = await supabase.from('teams').select('*').eq('id', overrideTeamId).maybeSingle()
+            myTeam = data
+        } else {
+            // NORMAL USER: Fetch their own team
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) { setLoading(false); return }
+            const { data } = await supabase.from('teams').select('*').eq('user_id', user.id).maybeSingle()
+            myTeam = data
+        }
+
         if (!myTeam) { setTeam(null); setLoading(false); return }
         setTeam(myTeam)
+
+        // ... [THE REST OF THE FUNCTION REMAINS EXACTLY THE SAME] ...
 
         // 2. Fetch Aux Data (Chips & Next Race) EARLY so we can use them for roster logic
         const { data: teamChips } = await supabase.from('team_chips').select('*').eq('team_id', myTeam.id)
@@ -223,12 +235,16 @@ export const useTeamData = () => {
 
     // --- DATA GETTERS FOR MODALS ---
 
+// --- DATA GETTERS FOR MODALS ---
+
     const getStatsData = async (pick, type) => {
         let query = type === 'driver' 
             ? supabase.from('driver_stats_view').select('*').eq('driver_id', pick.driver_id) 
             : supabase.from('constructor_stats_view').select('*').eq('constructor_id', pick.constructor_id)
         
-        const { data } = await query.eq('year', 2026).single()
+        // 👇 CHANGED FROM .single() TO .maybeSingle()
+        const { data } = await query.eq('year', 2026).maybeSingle()
+        
         return data || { total_fantasy_points: 0, total_real_points: 0, best_finish: '-', dnf_count: 0 }
     }
 
@@ -342,9 +358,10 @@ export const useTeamData = () => {
 
     useEffect(() => { fetchMyTeam() }, [fetchMyTeam])
 
-    // --- RETURN STATEMENT ADDED HERE ---
+// --- RETURN STATEMENT ADDED HERE ---
     return {
         team, roster, recaps, chips, nextRace, allDrivers, loading,
-        updateTeamName, deploySafetyCar, deploySteal, getStatsData, getRecapData
+        updateTeamName, deploySafetyCar, deploySteal, getStatsData, getRecapData,
+        switchTeam: fetchMyTeam // <-- NEW: Expose the fetch function to the UI
     }
 }

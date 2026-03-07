@@ -16,15 +16,15 @@ const Home = () => {
     fetchAllData()
   }, [])
 
-  const fetchAllData = async () => {
+const fetchAllData = async () => {
     setLoading(true)
 
-    // --- 1. GET UPCOMING RACES (Current Season Only) ---
+    // --- 1. GET UPCOMING RACES ---
     const today = new Date().toISOString()
     const { data: raceData } = await supabase
       .from('races')
       .select('*')
-      .eq('year', CURRENT_SEASON) // <--- Force Current Season
+      .eq('year', CURRENT_SEASON)
       .gte('date', today)
       .order('date', { ascending: true })
       .limit(6)
@@ -34,58 +34,33 @@ const Home = () => {
         setSchedule(raceData.slice(1))
     }
 
-    // --- 2. GET STATS FROM VIEWS (Current Season Only) ---
-    // We fetch BOTH point types here to use in different panels
+    // --- 2. GET STATS FROM VIEWS ---
     
-    // A. Driver Stats
+    // A. Driver Stats (For WDC Panel)
     const { data: driverStats } = await supabase
       .from('driver_stats_view')
       .select('driver_id, name, code, team, total_real_points, total_fantasy_points')
-      .eq('year', CURRENT_SEASON) // <--- Force Current Season
+      .eq('year', CURRENT_SEASON)
 
-    // B. Constructor Stats
+    // B. Constructor Stats (For WCC Panel)
     const { data: constructorStats } = await supabase
       .from('constructor_stats_view')
       .select('constructor_id, name, total_real_points, total_fantasy_points')
-      .eq('year', CURRENT_SEASON) // <--- Force Current Season
+      .eq('year', CURRENT_SEASON)
 
-    // --- 3. CALCULATE LEAGUE STANDINGS (Fantasy Points) ---
-    const { data: teams } = await supabase.from('teams').select('id, team_name, owner_name')
-    
-    // We use the 'rosters' table now as the source of truth
-    const { data: rosters } = await supabase.from('rosters').select('*')
+    // --- 3. GET LEAGUE STANDINGS (Using the Fixed SQL View) ---
+    // This view now correctly handles the 0.5 constructor multiplier and Safety Car points
+    const { data: leagueData } = await supabase
+      .from('view_team_points_total')
+      .select('team_id, team_name, owner_name, total_points')
+      .order('total_points', { ascending: false });
 
-    if (teams && rosters && driverStats && constructorStats) {
-        const calculatedStandings = teams.map(team => {
-            const roster = rosters.find(r => r.team_id === team.id)
-            let totalFantasyPoints = 0
-
-            if (roster) {
-                // Sum Drivers (Fantasy Points)
-                const dIds = [roster.driver_1_id, roster.driver_2_id, roster.driver_3_id].filter(Boolean)
-                dIds.forEach(id => {
-                    const stat = driverStats.find(s => s.driver_id === id)
-                    if (stat) totalFantasyPoints += (stat.total_fantasy_points || 0)
-                })
-
-                // Sum Constructor (Fantasy Points)
-                if (roster.constructor_id) {
-                    const stat = constructorStats.find(s => s.constructor_id === roster.constructor_id)
-                    if (stat) totalFantasyPoints += (stat.total_fantasy_points || 0)
-                }
-            }
-
-            return { ...team, total_points: totalFantasyPoints }
-        })
-
-        // Sort by Points (High to Low)
-        calculatedStandings.sort((a, b) => b.total_points - a.total_points)
-        setLeagueStandings(calculatedStandings)
+    if (leagueData) {
+        setLeagueStandings(leagueData)
     }
 
     // --- 4. FORMAT REAL WORLD PANELS (Real Points) ---
     
-    // WDC: Driver Real Points
     if (driverStats) {
         const formattedWdc = driverStats
             .map(stat => ({
@@ -93,20 +68,19 @@ const Home = () => {
                 name: stat.name,
                 code: stat.code,
                 team: stat.team,
-                points: stat.total_real_points // <--- Real Points for F1 Standings
+                points: stat.total_real_points 
             }))
             .sort((a,b) => b.points - a.points)
             .slice(0, 10)
         setWdc(formattedWdc)
     }
 
-    // WCC: Constructor Real Points
     if (constructorStats) {
         const formattedWcc = constructorStats
             .map(stat => ({
                 id: stat.constructor_id,
                 name: stat.name,
-                points: stat.total_real_points // <--- Real Points for F1 Standings
+                points: stat.total_real_points 
             }))
             .sort((a,b) => b.points - a.points)
             .slice(0, 10)

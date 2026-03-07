@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../App'
 import { useTeamData } from '../hooks/useTeamData'
@@ -8,10 +8,11 @@ import { getTeamColors } from '../utils/colors.js'
 const MyTeam = () => {
     const navigate = useNavigate()
 
-    // 1. USE THE CUSTOM HOOK
+    // 1. USE THE CUSTOM HOOK (Now including switchTeam)
     const {
         team, roster, recaps, chips, nextRace, allDrivers, loading,
-        updateTeamName, deploySafetyCar, deploySteal, getStatsData, getRecapData
+        updateTeamName, deploySafetyCar, deploySteal, getStatsData, getRecapData,
+        switchTeam
     } = useTeamData()
 
     // 2. LOCAL UI STATE
@@ -19,9 +20,28 @@ const MyTeam = () => {
     const [newName, setNewName] = useState('')
     const [renameLoading, setRenameLoading] = useState(false)
 
+    // --- ADMIN STATE ---
+    const [isAdmin, setIsAdmin] = useState(false)
+    const [allTeams, setAllTeams] = useState([])
+
     // Modal State
     const [modalState, setModalState] = useState({ type: null, item: null })
     const closeModal = () => setModalState({ type: null, item: null })
+
+    // --- ADMIN CHECK ---
+    useEffect(() => {
+        const checkAdminStatus = async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            
+            // ⚠️ REPLACE WITH YOUR ACTUAL ADMIN EMAIL ⚠️
+            if (user && user.email === 'rolandrao@gmail.com') {
+                setIsAdmin(true)
+                const { data } = await supabase.from('teams').select('id, team_name').order('team_name')
+                setAllTeams(data || [])
+            }
+        }
+        checkAdminStatus()
+    }, [])
 
     // --- HANDLERS ---
     const handleLogout = async () => { await supabase.auth.signOut(); navigate('/') }
@@ -54,6 +74,25 @@ const MyTeam = () => {
 
     return (
         <div className="min-h-screen bg-neutral-900 text-white pb-24 md:pb-10 relative">
+
+            {/* --- SECRET ADMIN BAR --- */}
+            {isAdmin && (
+                <div className="bg-f1-red text-white py-2 px-4 flex flex-wrap justify-center items-center gap-4 z-50 relative shadow-md">
+                    <span className="font-bold text-sm tracking-widest uppercase">🛠️ Admin View:</span>
+                    <select 
+                        className="bg-black text-white px-3 py-1 rounded text-sm border border-white/20 outline-none"
+                        value={team.id}
+                        onChange={(e) => switchTeam(e.target.value)}
+                    >
+                        {allTeams.map(t => (
+                            <option key={t.id} value={t.id}>{t.team_name}</option>
+                        ))}
+                    </select>
+                    <button onClick={() => switchTeam(null)} className="text-xs opacity-80 hover:opacity-100 underline">
+                        Reset to My Team
+                    </button>
+                </div>
+            )}
 
             {/* MODALS MANAGER */}
             <TeamModals
@@ -93,10 +132,7 @@ const MyTeam = () => {
                 {/* 1. DRIVERS */}
                 <div>
                     <h2 className="text-xl font-bold border-b border-neutral-700 pb-2 mb-4"><span>🏎️</span> Active Drivers</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    </div>
-                    {/* --- 1. DRIVERS SECTION --- */}
-                    {/* FORCE 3 COLUMNS: grid-cols-1 (mobile) -> grid-cols-2 (tablet) -> grid-cols-3 (desktop) */}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                         {driversList.map((pick) => {
                             const teamName = pick.drivers.team || 'Free Agent';
@@ -115,8 +151,6 @@ const MyTeam = () => {
                 `}
                                     style={{ background: constructGradient(colors) }}
                                 >
-                                    {/* ... (Content remains exactly the same) ... */}
-
                                     {/* Pick Number */}
                                     <div className="absolute top-0 right-0 bg-black/40 text-white/80 text-xs px-3 py-1.5 rounded-bl backdrop-blur-md font-bold">
                                         #{pick.pick_number}
