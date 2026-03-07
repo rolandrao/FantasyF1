@@ -252,8 +252,8 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
             : 'bg-neutral-800 border-white/10 hover:border-white/30 shadow-lg'}`}
     >
       <div 
-        onClick={!isFuture ? onToggle : undefined}
-        className={`relative min-h-[100px] flex ${!isFuture ? 'cursor-pointer' : 'cursor-default'}`}
+        onClick={onToggle} // <-- FIX 1: Removed the !isFuture lock
+        className="relative min-h-[100px] flex cursor-pointer" // <-- FIX 2: Always show pointer
       >
         <div className="w-2 absolute top-0 bottom-0 left-0 transition-all duration-300 group-hover:w-3" style={{ background: `linear-gradient(to bottom, ${raceColors.primary}, ${raceColors.secondary})` }} />
         
@@ -273,22 +273,23 @@ const RaceCard = ({ race, ny, isFuture, isExpanded, onToggle }) => {
           </div>
           
           <div className="flex items-center gap-4">
-             {isFuture ? (
-                 <div className="text-right bg-black/20 p-2 rounded-lg border border-white/5">
+             {isFuture && (
+                 <div className="text-right bg-black/20 p-2 rounded-lg border border-white/5 hidden sm:block">
                     <div className="text-[10px] uppercase text-gray-500 font-bold">Lights Out (ET)</div>
                     <div className="font-mono font-bold text-lg text-yellow-400">{ny.time}</div>
                  </div>
-             ) : (
-                 <div className={`w-8 h-8 rounded-full bg-white/5 flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-white/20' : ''}`}>
-                    <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                 </div>
              )}
+             {/* FIX 3: Always show the chevron so the user knows they can click it! */}
+             <div className={`w-8 h-8 rounded-full bg-white/5 flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-white/20' : ''}`}>
+                <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+             </div>
           </div>
         </div>
       </div>
 
       <AnimatePresence>
-        {isExpanded && !isFuture && (
+        {/* FIX 4: Removed !isFuture from this check so the dropdown can actually open */}
+        {isExpanded && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -342,9 +343,17 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
         `) 
         .eq('race_id', raceId)
         .eq('session_type', sessionType) 
+        // We still ask Supabase to order it initially...
         .order('position', { ascending: true })
       
-      setResults(data || [])
+      // ...but then we intercept it to push 0s to the back!
+      const sortedData = (data || []).sort((a, b) => {
+          if (a.position === 0 && b.position !== 0) return 1;  // push 'a' down
+          if (b.position === 0 && a.position !== 0) return -1; // push 'b' down
+          return a.position - b.position; // otherwise sort normally
+      });
+
+      setResults(sortedData)
       setLoading(false)
     }
 
@@ -369,17 +378,20 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
             </tr>
         </thead>
         <tbody className="divide-y divide-white/5">
-            {results.map((r) => {
+            {results.map((r, index) => {
             const colors = getTeamColors(r.constructors?.name)
             
+            // If they are DNS, let's also gray out their position text to make it obvious
+            const isDNS = r.position === 0;
+
             return (
-                <tr key={r.position} className="hover:bg-white/5 transition group">
-                <td className={`py-3 px-2 text-center font-mono font-bold ${r.position === 1 ? 'text-yellow-400' : 'text-gray-400'}`}>
-                    {r.position}
+                <tr key={`${r.drivers?.code}-${index}`} className={`hover:bg-white/5 transition group ${isDNS ? 'opacity-50' : ''}`}>
+                <td className={`py-3 px-2 text-center font-mono font-bold ${r.position === 1 ? 'text-yellow-400' : isDNS ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {isDNS ? 'DNS' : r.position}
                 </td>
                 <td className="py-3 px-2">
                     <div className="flex items-center gap-3">
-                        <div className="w-1 h-8 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.1)]" style={{ background: colors.primary }}></div>
+                        <div className="w-1 h-8 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.1)]" style={{ background: colors.primary || '#666' }}></div>
                         <div>
                             <div className="font-bold flex items-center gap-2">
                                 {r.drivers?.name}
@@ -393,9 +405,9 @@ const SessionResultsTable = ({ raceId, sessionType }) => {
                 
                 <td className="py-3 px-2 text-right font-mono font-bold">
                     {sessionType === 'qualifying' ? (
-                        <span className="text-white">{r.time || 'No Time'}</span>
+                        <span className={isDNS ? 'text-gray-500' : 'text-white'}>{isDNS ? 'No Time' : r.time || 'No Time'}</span>
                     ) : (
-                        <span className="text-green-400">+{r.real_points}</span>
+                        <span className={isDNS ? 'text-gray-500' : 'text-green-400'}>+{r.real_points}</span>
                     )}
                 </td>
                 </tr>
