@@ -13,22 +13,47 @@ import Settings from './pages/Settings'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// 1. HARDCODE MOBILE AUTH SETTINGS
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: window.localStorage, // Forces saving to the device's local storage
+    autoRefreshToken: true,       // Automatically refreshes the token in the background
+    persistSession: true,         // Keeps them logged in when the app is closed
+    detectSessionInUrl: false     // Set to false to avoid URL parsing conflicts unless using Magic Links
+  }
+})
 
 function App() {
   const [session, setSession] = useState(null)
+  
+  // 2. ADD INITIALIZING STATE
+  const [isInitializing, setIsInitializing] = useState(true)
 
   useEffect(() => {
+    // 3. CHECK FOR SESSION ON BOOT
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
+      setIsInitializing(false) // Turn off the loading screen once we have an answer
     })
 
+    // Listen for logins/logouts
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // 4. SHOW LOADING SCREEN WHILE WARMING UP
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center justify-center animate-pulse">
+        <div className="text-4xl mb-4">🏎️</div>
+        <div className="text-gray-400 font-bold tracking-widest uppercase text-sm">Warming up the tires...</div>
+      </div>
+    )
+  }
 
   return (
     // CHANGE 1: Removed 'md:flex-row'. We want a vertical stack (Nav on top, Content below).
