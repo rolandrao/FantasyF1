@@ -16,7 +16,7 @@ export const useTeamData = () => {
         return found ? found.pick_number : '-'
     }
 
-// Update fetchMyTeam to accept an optional teamId
+    // Update fetchMyTeam to accept an optional teamId
     const fetchMyTeam = useCallback(async (overrideTeamId = null) => {
         setLoading(true)
         let myTeam = null;
@@ -35,8 +35,6 @@ export const useTeamData = () => {
 
         if (!myTeam) { setTeam(null); setLoading(false); return }
         setTeam(myTeam)
-
-        // ... [THE REST OF THE FUNCTION REMAINS EXACTLY THE SAME] ...
 
         // 2. Fetch Aux Data (Chips & Next Race) EARLY so we can use them for roster logic
         const { data: teamChips } = await supabase.from('team_chips').select('*').eq('team_id', myTeam.id)
@@ -124,14 +122,20 @@ export const useTeamData = () => {
         formattedRoster.sort((a, b) => a.pick_number - b.pick_number)
         setRoster(formattedRoster)
 
-        // 5. Fetch Recaps
-        const { data: recapData } = await supabase
-            .from('team_race_recaps')
+        // 5. Fetch Recaps (USING THE NEW DYNAMIC SQL VIEW)
+        const { data: recapData, error: recapError } = await supabase
+            .from('view_team_race_recaps')
             .select('*')
             .eq('team_id', myTeam.id)
-            .gte('race_date', '2026-01-01')
-            .lt('race_date', new Date().toISOString())
             .order('race_date', { ascending: false })
+            
+        // 👇 TEMPORARY LOGGING BLOCK 👇
+        console.log("🚨 --- DEBUG RECAPS --- 🚨")
+        console.log("1. Searching for Team ID:", myTeam.id)
+        console.log("2. Supabase Data Returned:", recapData)
+        if (recapError) console.error("3. Supabase Error:", recapError)
+        console.log("🚨 -------------------- 🚨")
+
         setRecaps(recapData || [])
 
         setLoading(false)
@@ -235,8 +239,6 @@ export const useTeamData = () => {
 
     // --- DATA GETTERS FOR MODALS ---
 
-// --- DATA GETTERS FOR MODALS ---
-
     const getStatsData = async (pick, type) => {
         let query = type === 'driver' 
             ? supabase.from('driver_stats_view').select('*').eq('driver_id', pick.driver_id) 
@@ -274,14 +276,12 @@ export const useTeamData = () => {
         if (stealChip) {
             const meta = stealChip.metadata
             if (stealChip.team_id === team.id) {
-                // ... (Your existing Steal Logic for Attacker) ...
                 const targetIndex = effectiveDrivers.findIndex(d => d.id === meta.target_driver_id)
                 if (targetIndex !== -1) {
                     const stolenDriver = allDrivers.find(d => d.id === meta.swapped_driver_id)
                     if (stolenDriver) effectiveDrivers[targetIndex] = { ...stolenDriver, isSwapped: true }
                 }
             } else if (meta.victim_team_id === team.id) {
-                // ... (Your existing Steal Logic for Victim) ...
                 const stolenIndex = effectiveDrivers.findIndex(d => d.id === meta.swapped_driver_id)
                 if (stolenIndex !== -1) {
                     const forcedDriver = allDrivers.find(d => d.id === meta.target_driver_id)
@@ -291,7 +291,6 @@ export const useTeamData = () => {
         }
 
         // 4. Fetch Results & Calculate Driver/Constructor Points
-        // ... (Your existing Result Fetching Logic) ...
         const driverIds = effectiveDrivers.map(d => d.id)
         const constructorId = roster.find(p => p.type === 'constructor')?.constructor_id
 
@@ -358,7 +357,7 @@ export const useTeamData = () => {
 
     useEffect(() => { fetchMyTeam() }, [fetchMyTeam])
 
-// --- RETURN STATEMENT ADDED HERE ---
+    // --- RETURN STATEMENT ADDED HERE ---
     return {
         team, roster, recaps, chips, nextRace, allDrivers, loading,
         updateTeamName, deploySafetyCar, deploySteal, getStatsData, getRecapData,

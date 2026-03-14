@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom' // <-- 1. ADDED Navigate
 import { createClient } from '@supabase/supabase-js'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -13,14 +13,25 @@ import Settings from './pages/Settings'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// 2. FIXED MOBILE AUTH SETTINGS
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: window.localStorage, 
+    autoRefreshToken: true,       
+    persistSession: true,         
+    detectSessionInUrl: true      // <-- CHANGED TO TRUE FOR GOOGLE OAUTH!
+  }
+})
 
 function App() {
   const [session, setSession] = useState(null)
+  const [isInitializing, setIsInitializing] = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
+      setIsInitializing(false) 
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -30,26 +41,28 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center justify-center animate-pulse">
+        <div className="text-4xl mb-4">🏎️</div>
+        <div className="text-gray-400 font-bold tracking-widest uppercase text-sm">Warming up the tires...</div>
+      </div>
+    )
+  }
+
   return (
-    // CHANGE 1: Removed 'md:flex-row'. We want a vertical stack (Nav on top, Content below).
     <div className="min-h-screen bg-neutral-900 text-white font-sans antialiased selection:bg-f1-red selection:text-white flex flex-col">
       
-      {/* =====================================================
-          DESKTOP NAVIGATION (Horizontal Top Bar)
-          - Removed 'h-screen' (which forced it to be a tall sidebar)
-          - Added 'w-full' to ensure it stretches across the top
-         ===================================================== */}
       <div className="hidden md:block sticky top-0 z-50 w-full">
         <Navbar session={session} />
       </div>
 
-      {/* =====================================================
-          MAIN CONTENT AREA
-         ===================================================== */}
       <main className="flex-1 relative w-full overflow-x-hidden pb-24 md:pb-10">
         <Routes>
+          {/* 👇 3. THE ROUTER FIX: Bounce logged-in users away from the Login page */}
+          <Route path="/" element={session ? <Navigate to="/home" replace /> : <Login />} />
+          
           <Route path="/home" element={<Home />} />
-          <Route path="/" element={<Login />} />
           <Route path="/draft" element={<DraftRoom />} />
           <Route path="/team" element={<MyTeam />} />
           <Route path="/league" element={<League />} />
@@ -58,11 +71,9 @@ function App() {
         </Routes>
       </main>
 
-      {/* =====================================================
-          MOBILE NAVIGATION (Bottom Glass)
-         ===================================================== */}
       <div className="md:hidden">
-        <GlassNav />
+        {/* 👇 Optional Polish: Only show the bottom nav bar if they are actually logged in! */}
+        {session && <GlassNav />}
       </div>
 
     </div>

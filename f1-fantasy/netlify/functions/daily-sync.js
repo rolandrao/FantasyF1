@@ -47,30 +47,65 @@ const syncLogic = async (event) => {
 
     const yearsToSync = [2025, 2026]
     
-    // --- AUTOMATED SESSION TRACKING ---
-    // Fetch the 2026 schedule to determine if we are currently in a post-session window
-    const { data: currentRaces } = await supabaseAdmin
-      .from('races')
-      .select('*')
-      .eq('year', 2026)
-      .order('date', { ascending: true });
+    // ========================================================================
+    // ⚠️ MANUAL OVERRIDE TOGGLE (FOR LOCAL TESTING & MISSED RACES) ⚠️
+    // ========================================================================
+    // To force the sync to run RIGHT NOW (bypassing the time lock):
+    // Change `let forceSync = false;` to `let forceSync = true;`
+    // 
+    // IMPORTANT: ALWAYS CHANGE IT BACK TO `false` BEFORE MERGING TO GITHUB!
+    // ========================================================================
+    
+    let forceSync = false; // <--- CHANGE THIS TO true TO FORCE A RUN
+    
+    // ========================================================================
 
-    let shouldRunSync = false;
+    let shouldRunSync = forceSync;
 
-    for (const race of (currentRaces || [])) {
-      const raceDate = race.date; 
-      const raceTime = race.time; 
-      const sessionEnd = new Date(`${raceDate}T${raceTime}`);
-      
-      // The sync window opens 1 hour after the session end and stays open for 3 hours
-      const syncStart = new Date(sessionEnd.getTime() + (60 * 60 * 1000));
-      const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
+    if (forceSync) {
+        console.log(`⚠️ FORCE SYNC ENABLED: Bypassing automated time checks!`)
+    } else {
+        // --- NORMAL AUTOMATED SESSION TRACKING ---
+        // Fetch live schedule from Jolpi/Ergast to get precise Quali and Sprint times
+        // (Since our database only stores the Main Race time)
+        const scheduleResp = await fetch(`http://api.jolpi.ca/ergast/f1/2026.json`);
+        const scheduleData = await scheduleResp.json();
+        const currentRaces = scheduleData.MRData?.RaceTable?.Races || [];
 
-      if (now >= syncStart && now <= syncEnd) {
-        console.log(`🚀 TRIGGER: ${race.name} session finished recently. Initializing Sync...`);
-        shouldRunSync = true;
-        break;
-      }
+        for (const race of currentRaces) {
+          // Helper to check if current time is within the sync window for a specific session
+          const isWindowOpen = (dateStr, timeStr, durationHours) => {
+            if (!dateStr || !timeStr) return false;
+            
+            // 1. Calculate when the session actually finishes (Start Time + Duration)
+            const sessionStart = new Date(`${dateStr}T${timeStr}`);
+            const sessionEnd = new Date(sessionStart.getTime() + (durationHours * 60 * 60 * 1000));
+            
+            // 2. The sync window opens EXACTLY when the session ends and stays open for 3 hours
+            const syncStart = sessionEnd;
+            const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
+            
+            return now >= syncStart && now <= syncEnd;
+          };
+
+          // Check Main Race (approx 2 hours long)
+          if (isWindowOpen(race.date, race.time, 2)) {
+            console.log(`🚀 TRIGGER: ${race.raceName} (Main Race) finished recently.`);
+            shouldRunSync = true; break;
+          }
+          
+          // Check Sprint (approx 1 hour long)
+          if (race.Sprint && isWindowOpen(race.Sprint.date, race.Sprint.time, 1)) {
+            console.log(`🚀 TRIGGER: ${race.raceName} (Sprint) finished recently.`);
+            shouldRunSync = true; break;
+          }
+          
+          // Check Qualifying (approx 1 hour long)
+          if (race.Qualifying && isWindowOpen(race.Qualifying.date, race.Qualifying.time, 1)) {
+            console.log(`🚀 TRIGGER: ${race.raceName} (Qualifying) finished recently.`);
+            shouldRunSync = true; break;
+          }
+        }
     }
     
     if (shouldRunSync) {
@@ -195,7 +230,8 @@ const syncSeasonComplete = async (year) => {
       }
   })
 
-  // 4. OPENF1 ENTRY LIST SYNC (For Backfilling Scratched Drivers)
+// 4. OPENF1 ENTRY LIST SYNC (For Backfilling Scratched Drivers)
+  console.log("   -> 🏎️ Syncing Official Entry Lists from OpenF1...")
   for (const race of racesPayload) {
       const raceDate = new Date(race.date)
       if (Math.abs((new Date() - raceDate) / (1000 * 60 * 60 * 24)) > 7) continue;
@@ -203,19 +239,35 @@ const syncSeasonComplete = async (year) => {
       try {
           const meetResp = await fetch(`https://api.openf1.org/v1/meetings?year=${year}`)
           const meetings = await meetResp.json()
+          
+          if (!Array.isArray(meetings)) {
+              console.error(`      ⚠️ OpenF1 returned invalid data for meetings!`)
+              console.error(`      ⚠️ Raw Response:`, JSON.stringify(meetings).substring(0, 1000))
+              continue;
+          }
+
           const meeting = meetings.find(m => Math.abs((new Date(m.date_start) - raceDate) / (1000 * 60 * 60 * 24)) <= 5)
 
           if (meeting) {
               const drvResp = await fetch(`https://api.openf1.org/v1/drivers?meeting_key=${meeting.meeting_key}`)
               const drvData = await drvResp.json()
+              
+              if (!Array.isArray(drvData)) {
+                  console.error(`      ⚠️ OpenF1 returned invalid data for drivers!`)
+                  console.error(`      ⚠️ Raw Response:`, JSON.stringify(drvData).substring(0, 1000))
+                  continue; 
+              }
+
               const codes = [...new Set(drvData.map(d => d.name_acronym))].filter(Boolean)
 
               const activePayload = codes.map(code => ({ race_id: raceMap[race.round], driver_id: dMap[code] })).filter(p => p.driver_id)
-              if (activePayload.length > 0) await supabaseAdmin.from('active_drivers').upsert(activePayload, { onConflict: 'race_id, driver_id' })
+              if (activePayload.length > 0) {
+                  await supabaseAdmin.from('active_drivers').upsert(activePayload, { onConflict: 'race_id, driver_id' })
+              }
           }
-      } catch (err) { console.error(`⚠️ OpenF1 Sync failed:`, err.message) }
+      } catch (err) { console.error(`      ⚠️ OpenF1 Sync failed:`, err.message) }
   }
-
+  
   // 5. TARGETED BACKFILL (Ensure DNS drivers get 0 points)
   const { data: adData } = await supabaseAdmin.from('active_drivers').select('race_id, driver_id')
   const expected = {}
@@ -243,6 +295,7 @@ const syncSeasonComplete = async (year) => {
 
   if (finalResults.length > 0) {
       await supabaseAdmin.from('race_results').upsert(finalResults, { onConflict: 'race_id, driver_id, session_type' })
+      console.log(`   ✅ SUCCESSFULLY WROTE ${finalResults.length} ROWS TO DATABASE!`)
   }
 }
 

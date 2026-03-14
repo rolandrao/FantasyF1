@@ -37,19 +37,15 @@ const Login = () => {
 
   // --- NEW: GOOGLE LOGIN FUNCTION ---
   const handleGoogleLogin = async () => {
-    setLoading(true)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // This automatically redirects to localhost if you're on localhost, 
-        // or Netlify if you're on Netlify.
-        redirectTo: window.location.origin 
+        // 👇 This tells Supabase to send them back to the exact domain they are currently on!
+        redirectTo: `${window.location.origin}/home` 
       }
     })
-    if (error) {
-        alert(error.message)
-        setLoading(false)
-    }
+    
+    if (error) console.error("Login Error:", error.message)
   }
 
   return (
