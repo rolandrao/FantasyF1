@@ -66,26 +66,44 @@ const syncLogic = async (event) => {
         console.log(`⚠️ FORCE SYNC ENABLED: Bypassing automated time checks!`)
     } else {
         // --- NORMAL AUTOMATED SESSION TRACKING ---
-        // Fetch the 2026 schedule to determine if we are currently in a post-session window
-        const { data: currentRaces } = await supabaseAdmin
-          .from('races')
-          .select('*')
-          .eq('year', 2026)
-          .order('date', { ascending: true });
+        // Fetch live schedule from Jolpi/Ergast to get precise Quali and Sprint times
+        // (Since our database only stores the Main Race time)
+        const scheduleResp = await fetch(`http://api.jolpi.ca/ergast/f1/2026.json`);
+        const scheduleData = await scheduleResp.json();
+        const currentRaces = scheduleData.MRData?.RaceTable?.Races || [];
 
-        for (const race of (currentRaces || [])) {
-          const raceDate = race.date; 
-          const raceTime = race.time; 
-          const sessionEnd = new Date(`${raceDate}T${raceTime}`);
+        for (const race of currentRaces) {
+          // Helper to check if current time is within the sync window for a specific session
+          const isWindowOpen = (dateStr, timeStr, durationHours) => {
+            if (!dateStr || !timeStr) return false;
+            
+            // 1. Calculate when the session actually finishes (Start Time + Duration)
+            const sessionStart = new Date(`${dateStr}T${timeStr}`);
+            const sessionEnd = new Date(sessionStart.getTime() + (durationHours * 60 * 60 * 1000));
+            
+            // 2. The sync window opens EXACTLY when the session ends and stays open for 3 hours
+            const syncStart = sessionEnd;
+            const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
+            
+            return now >= syncStart && now <= syncEnd;
+          };
+
+          // Check Main Race (approx 2 hours long)
+          if (isWindowOpen(race.date, race.time, 2)) {
+            console.log(`🚀 TRIGGER: ${race.raceName} (Main Race) finished recently.`);
+            shouldRunSync = true; break;
+          }
           
-          // The sync window opens 1 hour after the session end and stays open for 3 hours
-          const syncStart = new Date(sessionEnd.getTime() + (60 * 60 * 1000));
-          const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
-
-          if (now >= syncStart && now <= syncEnd) {
-            console.log(`🚀 TRIGGER: ${race.name} session finished recently. Initializing Sync...`);
-            shouldRunSync = true;
-            break;
+          // Check Sprint (approx 1 hour long)
+          if (race.Sprint && isWindowOpen(race.Sprint.date, race.Sprint.time, 1)) {
+            console.log(`🚀 TRIGGER: ${race.raceName} (Sprint) finished recently.`);
+            shouldRunSync = true; break;
+          }
+          
+          // Check Qualifying (approx 1 hour long)
+          if (race.Qualifying && isWindowOpen(race.Qualifying.date, race.Qualifying.time, 1)) {
+            console.log(`🚀 TRIGGER: ${race.raceName} (Qualifying) finished recently.`);
+            shouldRunSync = true; break;
           }
         }
     }
@@ -222,11 +240,10 @@ const syncSeasonComplete = async (year) => {
           const meetResp = await fetch(`https://api.openf1.org/v1/meetings?year=${year}`)
           const meetings = await meetResp.json()
           
-          // 🛑 SAFETY SHIELD 1: Check if the meetings response is an array
           if (!Array.isArray(meetings)) {
               console.error(`      ⚠️ OpenF1 returned invalid data for meetings!`)
               console.error(`      ⚠️ Raw Response:`, JSON.stringify(meetings).substring(0, 1000))
-              continue; // Skip this OpenF1 sync safely
+              continue;
           }
 
           const meeting = meetings.find(m => Math.abs((new Date(m.date_start) - raceDate) / (1000 * 60 * 60 * 24)) <= 5)
@@ -235,7 +252,6 @@ const syncSeasonComplete = async (year) => {
               const drvResp = await fetch(`https://api.openf1.org/v1/drivers?meeting_key=${meeting.meeting_key}`)
               const drvData = await drvResp.json()
               
-              // 🛑 SAFETY SHIELD 2: Check if the drivers response is an array
               if (!Array.isArray(drvData)) {
                   console.error(`      ⚠️ OpenF1 returned invalid data for drivers!`)
                   console.error(`      ⚠️ Raw Response:`, JSON.stringify(drvData).substring(0, 1000))
