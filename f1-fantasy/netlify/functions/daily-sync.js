@@ -66,41 +66,33 @@ const syncLogic = async (event) => {
         console.log(`⚠️ FORCE SYNC ENABLED: Bypassing automated time checks!`)
     } else {
         // --- NORMAL AUTOMATED SESSION TRACKING ---
-        // Fetch live schedule from Jolpi/Ergast to get precise Quali and Sprint times
-        // (Since our database only stores the Main Race time)
         const scheduleResp = await fetch(`http://api.jolpi.ca/ergast/f1/2026.json`);
         const scheduleData = await scheduleResp.json();
         const currentRaces = scheduleData.MRData?.RaceTable?.Races || [];
 
         for (const race of currentRaces) {
-          // Helper to check if current time is within the sync window for a specific session
           const isWindowOpen = (dateStr, timeStr, durationHours) => {
             if (!dateStr || !timeStr) return false;
             
-            // 1. Calculate when the session actually finishes (Start Time + Duration)
             const sessionStart = new Date(`${dateStr}T${timeStr}`);
             const sessionEnd = new Date(sessionStart.getTime() + (durationHours * 60 * 60 * 1000));
             
-            // 2. The sync window opens EXACTLY when the session ends and stays open for 3 hours
             const syncStart = sessionEnd;
             const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
             
             return now >= syncStart && now <= syncEnd;
           };
 
-          // Check Main Race (approx 2 hours long)
           if (isWindowOpen(race.date, race.time, 2)) {
             console.log(`🚀 TRIGGER: ${race.raceName} (Main Race) finished recently.`);
             shouldRunSync = true; break;
           }
           
-          // Check Sprint (approx 1 hour long)
           if (race.Sprint && isWindowOpen(race.Sprint.date, race.Sprint.time, 1)) {
             console.log(`🚀 TRIGGER: ${race.raceName} (Sprint) finished recently.`);
             shouldRunSync = true; break;
           }
           
-          // Check Qualifying (approx 1 hour long)
           if (race.Qualifying && isWindowOpen(race.Qualifying.date, race.Qualifying.time, 1)) {
             console.log(`🚀 TRIGGER: ${race.raceName} (Qualifying) finished recently.`);
             shouldRunSync = true; break;
@@ -168,6 +160,16 @@ const syncSeasonComplete = async (year) => {
 
   const processList = (racesList, sessionType) => {
     if (!racesList || racesList.length === 0) return
+    
+    // 🔥 THE ALIAS MAP: Force API variations into your standard names
+    // Format: "What the API sends": "What you want saved in your DB"
+    const CONSTRUCTOR_ALIASES = {
+        "Alpine": "Alpine F1 Team",
+        "Cadillac": "Cadillac F1 Team",
+        "Haas": "Haas F1 Team",
+        "RB": "RB F1 Team"
+    };
+
     for (const race of racesList) {
       const raceId = raceMap[parseInt(race.round)]
       if (!raceId) continue
@@ -179,7 +181,13 @@ const syncSeasonComplete = async (year) => {
       for (const row of list) {
         if (!row.Driver) continue; 
         const dCode = row.Driver.code || row.Driver.driverId.substring(0,3).toUpperCase()
-        const cName = row.Constructor?.name
+        
+        let cName = row.Constructor?.name
+        
+        // Intercept and standardize the constructor name
+        if (cName && CONSTRUCTOR_ALIASES[cName]) {
+            cName = CONSTRUCTOR_ALIASES[cName];
+        }
         
         driversToUpsert.set(dCode, {
             year: year, name: `${row.Driver.givenName} ${row.Driver.familyName}`,
@@ -242,7 +250,6 @@ const syncSeasonComplete = async (year) => {
           
           if (!Array.isArray(meetings)) {
               console.error(`      ⚠️ OpenF1 returned invalid data for meetings!`)
-              console.error(`      ⚠️ Raw Response:`, JSON.stringify(meetings).substring(0, 1000))
               continue;
           }
 
@@ -254,7 +261,6 @@ const syncSeasonComplete = async (year) => {
               
               if (!Array.isArray(drvData)) {
                   console.error(`      ⚠️ OpenF1 returned invalid data for drivers!`)
-                  console.error(`      ⚠️ Raw Response:`, JSON.stringify(drvData).substring(0, 1000))
                   continue; 
               }
 
