@@ -151,11 +151,22 @@ const TeamModals = ({ type, item, isOpen, onClose, dataFuncs, contextData }) => 
                                             <tr className="bg-blue-900/10 hover:bg-blue-900/20 transition-colors duration-100">
                                                 <td className="p-4 font-bold border-r border-white/5 text-blue-200">
                                                     <div>{data.constructorRow.name}</div>
-                                                    <div className="text-[10px] text-blue-300/50 font-normal uppercase">Constructor</div>
+                                                    <div className="text-[10px] text-blue-300/50 font-normal uppercase mb-1">Constructor</div>
+
+                                                    {/* NEW: Driver Breakdown List */}
+                                                    {data.constructorRow.contributions && data.constructorRow.contributions.length > 0 && (
+                                                        <div className="mt-1 space-y-0.5">
+                                                            {data.constructorRow.contributions.map((c, i) => (
+                                                                <div key={i} className="text-[10px] text-white/60 font-normal flex items-center gap-1">
+                                                                    <span className="opacity-50 text-blue-300">↳</span> {c.code}: <span className="text-green-400 font-mono">+{c.pts}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="p-4 text-center font-mono text-blue-200">
-                                                    {(data.isSprint ? data.constructorRow.sprintPts : data.constructorRow.qualiPts) > 0 
-                                                        ? `+${data.isSprint ? data.constructorRow.sprintPts : data.constructorRow.qualiPts}` 
+                                                    {(data.isSprint ? data.constructorRow.sprintPts : data.constructorRow.qualiPts) > 0
+                                                        ? `+${data.isSprint ? data.constructorRow.sprintPts : data.constructorRow.qualiPts}`
                                                         : '-'}
                                                 </td>
                                                 <td className="p-4 text-center font-mono text-blue-200 border-l border-white/5">
@@ -176,7 +187,7 @@ const TeamModals = ({ type, item, isOpen, onClose, dataFuncs, contextData }) => 
                                                         Active Chip Bonus
                                                     </td>
                                                 </tr>
-                                                
+
                                                 {/* Data Row */}
                                                 <tr className="hover:bg-white/5 transition-colors">
                                                     <td className="p-4 font-bold border-r border-white/5 text-green-200">
