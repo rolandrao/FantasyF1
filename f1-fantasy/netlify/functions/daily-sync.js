@@ -9,6 +9,21 @@ const supabaseAdmin = createClient(
 // --- CONFIGURATION ---
 const SYNC_WINDOW_MINUTES = 180 // 3-hour window for syncing after a session ends
 
+// --- HELPER: FETCH WITH RETRY (Prevents API Timeouts) ---
+const fetchWithRetry = async (url, retries = 3, backoff = 2000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response;
+    } catch (error) {
+      console.warn(`⚠️ Fetch failed for ${url} (Attempt ${i + 1}/${retries}). Retrying in ${backoff/1000}s...`);
+      if (i === retries - 1) throw error; 
+      await new Promise(res => setTimeout(res, backoff));
+    }
+  }
+}
+
 const fetchAllPages = async (baseUrl) => {
   let allResults = []
   let offset = 0
@@ -20,10 +35,9 @@ const fetchAllPages = async (baseUrl) => {
     const url = `${baseUrl}${separator}limit=${limit}&offset=${offset}`
     
     await new Promise(r => setTimeout(r, 200))
-    const resp = await fetch(url)
-    if (!resp.ok) break;
-
+    const resp = await fetchWithRetry(url)
     const data = await resp.json()
+    
     if (!data.MRData || !data.MRData.RaceTable) break;
     
     const races = data.MRData.RaceTable.Races || []
@@ -48,16 +62,9 @@ const syncLogic = async (event) => {
     const yearsToSync = [2025, 2026]
     
     // ========================================================================
-    // ⚠️ MANUAL OVERRIDE TOGGLE (FOR LOCAL TESTING & MISSED RACES) ⚠️
+    // ⚠️ MANUAL OVERRIDE TOGGLE
     // ========================================================================
-    // To force the sync to run RIGHT NOW (bypassing the time lock):
-    // Change `let forceSync = false;` to `let forceSync = true;`
-    // 
-    // IMPORTANT: ALWAYS CHANGE IT BACK TO `false` BEFORE MERGING TO GITHUB!
-    // ========================================================================
-    
-    let forceSync = true; // <--- CHANGE THIS TO true TO FORCE A RUN
-    
+    let forceSync = true; // <--- SET TO TRUE ONLY FOR LOCAL CLI TESTING
     // ========================================================================
 
     let shouldRunSync = forceSync;
@@ -65,38 +72,47 @@ const syncLogic = async (event) => {
     if (forceSync) {
         console.log(`⚠️ FORCE SYNC ENABLED: Bypassing automated time checks!`)
     } else {
-        // --- NORMAL AUTOMATED SESSION TRACKING ---
-        const scheduleResp = await fetch(`http://api.jolpi.ca/ergast/f1/2026.json`);
-        const scheduleData = await scheduleResp.json();
-        const currentRaces = scheduleData.MRData?.RaceTable?.Races || [];
+        // --- 1. MIDNIGHT OVERRIDE (EASTERN TIME) ---
+        const nyTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+        if (nyTime.getHours() === 0) {
+            console.log(`🌙 TRIGGER: Midnight in New York. Running daily backup sync.`);
+            shouldRunSync = true;
+        }
 
-        for (const race of currentRaces) {
-          const isWindowOpen = (dateStr, timeStr, durationHours) => {
-            if (!dateStr || !timeStr) return false;
-            
-            const sessionStart = new Date(`${dateStr}T${timeStr}`);
-            const sessionEnd = new Date(sessionStart.getTime() + (durationHours * 60 * 60 * 1000));
-            
-            const syncStart = sessionEnd;
-            const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
-            
-            return now >= syncStart && now <= syncEnd;
-          };
+        // --- 2. NORMAL AUTOMATED SESSION TRACKING ---
+        if (!shouldRunSync) {
+            const scheduleResp = await fetchWithRetry(`https://api.jolpi.ca/ergast/f1/2026.json`);
+            const scheduleData = await scheduleResp.json();
+            const currentRaces = scheduleData.MRData?.RaceTable?.Races || [];
 
-          if (isWindowOpen(race.date, race.time, 2)) {
-            console.log(`🚀 TRIGGER: ${race.raceName} (Main Race) finished recently.`);
-            shouldRunSync = true; break;
-          }
-          
-          if (race.Sprint && isWindowOpen(race.Sprint.date, race.Sprint.time, 1)) {
-            console.log(`🚀 TRIGGER: ${race.raceName} (Sprint) finished recently.`);
-            shouldRunSync = true; break;
-          }
-          
-          if (race.Qualifying && isWindowOpen(race.Qualifying.date, race.Qualifying.time, 1)) {
-            console.log(`🚀 TRIGGER: ${race.raceName} (Qualifying) finished recently.`);
-            shouldRunSync = true; break;
-          }
+            for (const race of currentRaces) {
+              const isWindowOpen = (dateStr, timeStr, durationHours) => {
+                if (!dateStr || !timeStr) return false;
+                
+                const sessionStart = new Date(`${dateStr}T${timeStr}`);
+                const sessionEnd = new Date(sessionStart.getTime() + (durationHours * 60 * 60 * 1000));
+                
+                const syncStart = sessionEnd;
+                const syncEnd = new Date(sessionEnd.getTime() + (SYNC_WINDOW_MINUTES * 60 * 1000));
+                
+                return now >= syncStart && now <= syncEnd;
+              };
+
+              if (isWindowOpen(race.date, race.time, 2)) {
+                console.log(`🚀 TRIGGER: ${race.raceName} (Main Race) finished recently.`);
+                shouldRunSync = true; break;
+              }
+              
+              if (race.Sprint && isWindowOpen(race.Sprint.date, race.Sprint.time, 1)) {
+                console.log(`🚀 TRIGGER: ${race.raceName} (Sprint) finished recently.`);
+                shouldRunSync = true; break;
+              }
+              
+              if (race.Qualifying && isWindowOpen(race.Qualifying.date, race.Qualifying.time, 1)) {
+                console.log(`🚀 TRIGGER: ${race.raceName} (Qualifying) finished recently.`);
+                shouldRunSync = true; break;
+              }
+            }
         }
     }
     
@@ -121,7 +137,7 @@ const syncSeasonComplete = async (year) => {
   console.log(`\n📅 --- PROCESSING SEASON ${year} ---`)
 
   // 1. FETCH & SYNC SCHEDULE
-  const scheduleResp = await fetch(`http://api.jolpi.ca/ergast/f1/${year}.json`)
+  const scheduleResp = await fetchWithRetry(`https://api.jolpi.ca/ergast/f1/${year}.json`)
   const scheduleData = await scheduleResp.json()
   const apiRaces = scheduleData.MRData?.RaceTable?.Races || []
   if (apiRaces.length === 0) return
@@ -144,9 +160,9 @@ const syncSeasonComplete = async (year) => {
   const raceMap = {}; dbRaces.forEach(r => { raceMap[r.round] = r.id })
 
   // 2. FETCH RESULTS FROM API
-  const raceRaces = await fetchAllPages(`http://api.jolpi.ca/ergast/f1/${year}/results.json`)
-  const sprintRaces = await fetchAllPages(`http://api.jolpi.ca/ergast/f1/${year}/sprint.json`)
-  const qualiRaces = await fetchAllPages(`http://api.jolpi.ca/ergast/f1/${year}/qualifying.json`)
+  const raceRaces = await fetchAllPages(`https://api.jolpi.ca/ergast/f1/${year}/results.json`)
+  const sprintRaces = await fetchAllPages(`https://api.jolpi.ca/ergast/f1/${year}/sprint.json`)
+  const qualiRaces = await fetchAllPages(`https://api.jolpi.ca/ergast/f1/${year}/qualifying.json`)
 
   // 3. PROCESS PAYLOADS
   const driversToUpsert = new Map()
@@ -161,8 +177,6 @@ const syncSeasonComplete = async (year) => {
   const processList = (racesList, sessionType) => {
     if (!racesList || racesList.length === 0) return
     
-    // 🔥 THE ALIAS MAP: Force API variations into your standard names
-    // Format: "What the API sends": "What you want saved in your DB"
     const CONSTRUCTOR_ALIASES = {
         "Alpine": "Alpine F1 Team",
         "Cadillac": "Cadillac F1 Team",
@@ -184,7 +198,6 @@ const syncSeasonComplete = async (year) => {
         
         let cName = row.Constructor?.name
         
-        // Intercept and standardize the constructor name
         if (cName && CONSTRUCTOR_ALIASES[cName]) {
             cName = CONSTRUCTOR_ALIASES[cName];
         }
@@ -238,40 +251,72 @@ const syncSeasonComplete = async (year) => {
       }
   })
 
-// 4. OPENF1 ENTRY LIST SYNC (For Backfilling Scratched Drivers)
-  console.log("   -> 🏎️ Syncing Official Entry Lists from OpenF1...")
+  // 4. OPENF1 DATA SYNC (Entry Lists + Safety Cars)
+  console.log("   -> 🏎️ Syncing Data from OpenF1 (Drivers & Race Control)...")
   for (const race of racesPayload) {
       const raceDate = new Date(race.date)
       if (Math.abs((new Date() - raceDate) / (1000 * 60 * 60 * 24)) > 7) continue;
 
       try {
-          const meetResp = await fetch(`https://api.openf1.org/v1/meetings?year=${year}`)
+          const meetResp = await fetchWithRetry(`https://api.openf1.org/v1/meetings?year=${year}`)
           const meetings = await meetResp.json()
           
-          if (!Array.isArray(meetings)) {
-              console.error(`      ⚠️ OpenF1 returned invalid data for meetings!`)
-              continue;
-          }
+          if (!Array.isArray(meetings)) continue;
 
           const meeting = meetings.find(m => Math.abs((new Date(m.date_start) - raceDate) / (1000 * 60 * 60 * 24)) <= 5)
 
           if (meeting) {
-              const drvResp = await fetch(`https://api.openf1.org/v1/drivers?meeting_key=${meeting.meeting_key}`)
+              // A. DRIVER ENTRY LIST
+              const drvResp = await fetchWithRetry(`https://api.openf1.org/v1/drivers?meeting_key=${meeting.meeting_key}`)
               const drvData = await drvResp.json()
               
-              if (!Array.isArray(drvData)) {
-                  console.error(`      ⚠️ OpenF1 returned invalid data for drivers!`)
-                  continue; 
+              if (Array.isArray(drvData)) {
+                  const codes = [...new Set(drvData.map(d => d.name_acronym))].filter(Boolean)
+                  const activePayload = codes.map(code => ({ race_id: raceMap[race.round], driver_id: dMap[code] })).filter(p => p.driver_id)
+                  if (activePayload.length > 0) {
+                      await supabaseAdmin.from('active_drivers').upsert(activePayload, { onConflict: 'race_id, driver_id' })
+                  }
               }
 
-              const codes = [...new Set(drvData.map(d => d.name_acronym))].filter(Boolean)
+              // B. SAFETY CAR DATA (VERIFIED BY SANDBOX)
+              try {
+                  const sessionResp = await fetchWithRetry(`https://api.openf1.org/v1/sessions?meeting_key=${meeting.meeting_key}&session_name=Race`)
+                  const sessions = await sessionResp.json()
 
-              const activePayload = codes.map(code => ({ race_id: raceMap[race.round], driver_id: dMap[code] })).filter(p => p.driver_id)
-              if (activePayload.length > 0) {
-                  await supabaseAdmin.from('active_drivers').upsert(activePayload, { onConflict: 'race_id, driver_id' })
+                  if (Array.isArray(sessions) && sessions.length > 0) {
+                      const raceSession = sessions[0]
+                      const statusResp = await fetchWithRetry(`https://api.openf1.org/v1/race_control?session_key=${raceSession.session_key}`)
+                      const raceControlData = await statusResp.json()
+
+                      if (Array.isArray(raceControlData)) {
+                          let scCount = 0;
+                          let vscCount = 0;
+
+                          raceControlData.forEach(row => {
+                              if (row.message) {
+                                  const msg = row.message.toUpperCase();
+                                  
+                                  // Safely checking exact deployment strings matched in test sandbox
+                                  if (msg.includes('SC DEPLOYED') && !msg.includes('VSC')) scCount++;
+                                  if (msg === 'SAFETY CAR DEPLOYED') scCount++;
+                                  
+                                  if (msg.includes('VSC DEPLOYED') || msg === 'VIRTUAL SAFETY CAR DEPLOYED') vscCount++;
+                              }
+                          });
+
+                          // Update the races table rows with final calculated counts
+                          await supabaseAdmin.from('races')
+                              .update({ safety_cars: scCount, virtual_safety_cars: vscCount })
+                              .eq('id', raceMap[race.round]);
+                      }
+                  }
+              } catch (scError) {
+                  console.warn(`      ⚠️ Safety Car sync skipped/failed for round ${race.round}: ${scError.message}`);
               }
           }
-      } catch (err) { console.error(`      ⚠️ OpenF1 Sync failed:`, err.message) }
+      } catch (err) { 
+          console.error(`      ⚠️ OpenF1 General Sync failed:`, err.message) 
+      }
   }
   
   // 5. TARGETED BACKFILL (Ensure DNS drivers get 0 points)
