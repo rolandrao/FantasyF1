@@ -56,7 +56,7 @@ const syncLogic = async (event) => {
     // IMPORTANT: ALWAYS CHANGE IT BACK TO `false` BEFORE MERGING TO GITHUB!
     // ========================================================================
     
-    let forceSync = false; // <--- CHANGE THIS TO true TO FORCE A RUN
+    let forceSync = true; // <--- CHANGE THIS TO true TO FORCE A RUN
     
     // ========================================================================
 
