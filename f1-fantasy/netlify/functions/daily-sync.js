@@ -64,7 +64,7 @@ const syncLogic = async (event) => {
     // ========================================================================
     // ⚠️ MANUAL OVERRIDE TOGGLE
     // ========================================================================
-    let forceSync = true; // <--- SET TO TRUE ONLY FOR LOCAL CLI TESTING
+    let forceSync = false; // <--- SET TO TRUE ONLY FOR LOCAL CLI TESTING
     // ========================================================================
 
     let shouldRunSync = forceSync;
